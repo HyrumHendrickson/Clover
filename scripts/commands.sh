@@ -24,12 +24,13 @@ run_command() {
       ;;
       
     save)
-      sudo echo "${tokens[2]}" > data/env_vars/"${tokens[1]}"
+      [ -d "~/clover_files" ] || mkdir -p "~/clover_files"
+      echo "${tokens[2]}" > ~/clover_files/"${tokens[1]}"
       echo "saved"
       ;;
 
     list)
-		for file in data/env_vars/*; do
+		for file in ~/clover_files/*; do
 		  echo -n "$(basename "$file"): "
 		  cat "$file"
 		done
