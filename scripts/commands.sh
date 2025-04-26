@@ -56,11 +56,6 @@ run_command() {
     update)
         source scripts/update.sh
       ;;
-
-      shell)
-        string="${tokens[@]:1}"
-        source "$string"
-      ;;
       
     *)
       echo "Unknown command: $input"
