@@ -1,1 +1,3 @@
-mkdir testing_dir
+#!/bin/bash
+
+source backups/clover_installer.sh
