@@ -1,10 +1,35 @@
 #!/bin/bash
-
-# Fail immediately if anything goes wrong
 set -e
 
 # Temporary working directory
 TEMP_DIR=$(mktemp -d)
+
+# Function to install git if missing
+install_git_if_needed() {
+    if ! command -v git &> /dev/null; then
+        echo "Git is not installed. Installing git..."
+
+        if [ -f /etc/debian_version ]; then
+            # Debian/Ubuntu system
+            sudo apt update
+            sudo apt install -y git
+        elif [ -f /etc/redhat-release ]; then
+            # RHEL/CentOS/Fedora system
+            sudo yum install -y git
+        elif [ -f /etc/arch-release ]; then
+            # Arch Linux
+            sudo pacman -Sy --noconfirm git
+        else
+            echo "⚠️ Unsupported Linux distribution. Please install git manually."
+            exit 1
+        fi
+    else
+        echo "Git is already installed."
+    fi
+}
+
+# First, make sure git exists
+install_git_if_needed
 
 # Clone the repo fresh every time
 echo "Cloning the Clover repo..."
