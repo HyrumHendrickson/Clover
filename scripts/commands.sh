@@ -15,6 +15,7 @@ run_command() {
 -start
 -clear
 -update
+-shell
 -exit
 -quit"
       ;;
@@ -53,7 +54,12 @@ run_command() {
       ;;
 
     update)
-      source scripts/update.sh
+        source scripts/update.sh
+      ;;
+
+      shell)
+        string="${tokens[@]:1}"
+        source "$string"
       ;;
       
     *)
