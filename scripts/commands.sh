@@ -24,7 +24,7 @@ run_command() {
       ;;
       
     save)
-      echo "${tokens[2]}" > data/env_vars/"${tokens[1]}"
+      sudo echo "${tokens[2]}" > data/env_vars/"${tokens[1]}"
       echo "saved"
       ;;
 
