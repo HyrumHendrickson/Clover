@@ -1,1 +1,1 @@
-curl -fsSL https://raw.githubusercontent.com/HyrumHendrickson/clover/backups/clover_installer.sh | bash
+curl -fsSL https://raw.githubusercontent.com/HyrumHendrickson/clover/master/backups/clover_installer.sh | bash
