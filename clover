@@ -1,0 +1,19 @@
+#!/bin/bash
+
+# initalization
+cd ~/projects/clover
+source scripts/commands.sh
+
+
+# main loop
+input="start"
+while [[ "$input" != "quit" && "$input" != "exit" ]]; do
+	run_command "$input"
+	echo -n '> '
+	read input
+done
+
+# exit process
+cat assets/thanks.txt
+
+
