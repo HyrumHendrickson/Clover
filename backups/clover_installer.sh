@@ -51,6 +51,7 @@ fi
 cd /
 rm -rf "$TEMP_DIR"
 
-echo "Clover installed or updated successfully!"
+echo ""
+echo "Clover installed successfully!"
 echo "You can now run it by typing 'clover' and read the manual with 'man clover'"
 
