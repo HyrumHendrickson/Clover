@@ -30,7 +30,7 @@ run_command() {
       ;;
 
     list)
-		for file in "$HOME/clover_files/*"; do
+		for file in $HOME/clover_files/*; do
 		  echo -n "$(basename "$file"): "
 		  cat "$file"
 		done
