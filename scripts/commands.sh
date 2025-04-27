@@ -35,7 +35,7 @@ run_command() {
 
 
         if [ "$(find $HOME/.clover_files -mindepth 1 | head -n 1)" ]; then
-            for file in $HOME/clover_files/*; do
+            for file in $HOME/.clover_files/*; do
                 echo -n "$(basename "$file"): "
             	cat "$file"
             done
