@@ -26,7 +26,7 @@ run_command() {
       
     save)
       [ -d "$HOME/.clover_files" ] || mkdir -p "$HOME/.clover_files"
-      echo "${tokens[2]}" > ~/clover_files/"${tokens[1]}"
+      echo "${tokens[2]}" > ~/.clover_files/"${tokens[1]}"
       echo "saved"
       ;;
 
