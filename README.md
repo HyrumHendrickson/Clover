@@ -1,3 +1,4 @@
+# Clover bash tool
 To install clover, run this code. 
 Clover currently only works in linux.
 
