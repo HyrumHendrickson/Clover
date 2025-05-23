@@ -7,7 +7,7 @@ cd "$TEMP_DIR"
 
 # Download and extract the Clover repo
 echo "Downloading Clover archive..."
-curl -L -o clover.tar.gz https://github.com/HyrumHendrickson/clover/archive/refs/heads/master.tar.gz
+curl -L -o clover.tar.gz https://github.com/HyrumHendrickson/Clover/archive/refs/heads/master.tar.gz
 tar -xzf clover.tar.gz
 
 # Move into the extracted repo
