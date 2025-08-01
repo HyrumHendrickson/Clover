@@ -1,9 +1,14 @@
 #!/bin/bash
-
+# Clover - Data management tool for Linux
 # initalization
 cd /usr/local/lib/clover
+
+# Source utility functions
+source scripts/data_utils.sh
 source scripts/commands.sh
 
+# Check dependencies on startup
+check_dependencies
 
 # main loop
 input="start"
@@ -15,5 +20,4 @@ done
 
 # exit process
 cat assets/thanks.txt
-
 
