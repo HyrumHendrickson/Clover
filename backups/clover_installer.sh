@@ -10,8 +10,8 @@ echo "Downloading Clover archive..."
 curl -L -o clover.tar.gz https://github.com/HyrumHendrickson/Clover/archive/refs/heads/master.tar.gz
 tar -xzf clover.tar.gz
 
-# Move into the extracted repo
-cd clover-master
+# Move into the extracted repo (GitHub creates folder as "Clover-master")
+cd Clover-master
 
 # Prepare install directories
 echo "Preparing install directories..."
@@ -54,4 +54,3 @@ rm -rf "$TEMP_DIR"
 echo ""
 echo "Clover installed successfully!"
 echo "You can now run it by typing 'clover' and read the manual with 'man clover'"
-
