@@ -1,0 +1,26 @@
+name: Bug report
+description: Something is broken or behaves unexpectedly.
+labels: [bug]
+body:
+  - type: dropdown
+    id: tool
+    attributes:
+      label: Tool
+      options: [Desmos, Matrices, Complex functions, Vector fields, Python turtle, Tabs / import / export, Other]
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Attach a `.clover` file if you can.
+  - type: input
+    id: browser
+    attributes:
+      label: Browser and version

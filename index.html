@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; frame-src 'self' https://www.desmos.com https://desmos.com; object-src 'none'; base-uri 'none'; form-action 'none'"
+    />
+    <meta name="referrer" content="strict-origin-when-cross-origin" />
+    <title>Clover — mathematics workspace</title>
+    <meta
+      name="description"
+      content="Clover is a browser workspace for visualising mathematics: Desmos, matrix products, complex functions, vector fields, and Python turtle fractals."
+    />
+    <meta name="theme-color" content="#2c7a31" />
+    <link rel="icon" href="assets/favicon.ico" sizes="48x48" />
+    <link rel="icon" type="image/png" sizes="32x32" href="assets/clover-32.png" />
+    <link rel="apple-touch-icon" href="assets/apple-touch-icon.png" />
+    <script src="js/theme-init.js"></script>
+    <link rel="stylesheet" href="css/base.css" />
+    <link rel="stylesheet" href="css/app.css" />
+    <link rel="stylesheet" href="css/tools.css" />
+  </head>
+  <body>
+    <a class="skip-link" href="#panels">Skip to workspace</a>
+
+    <header class="topbar">
+      <div class="brand">
+        <img src="assets/clover-64.png" width="28" height="28" alt="" />
+        <span class="brand-name">Clover</span>
+      </div>
+
+      <div class="tabstrip" id="tabstrip" data-empty="true">
+        <div id="tablist" role="tablist" aria-label="Open tools"></div>
+        <button
+          id="new-tab"
+          class="btn btn-ghost btn-icon new-tab"
+          type="button"
+          aria-label="Open a new tab"
+          aria-haspopup="menu"
+          title="New tab"
+        ></button>
+      </div>
+
+      <div class="actions">
+        <button id="import-button" class="btn btn-ghost" type="button" aria-label="Import a Clover file">
+          <span class="btn-label">Import</span>
+        </button>
+        <button id="export-button" class="btn btn-ghost" type="button" aria-label="Export" aria-haspopup="menu">
+          <span class="btn-label">Export</span>
+        </button>
+        <button id="theme-button" class="btn btn-ghost btn-icon" type="button"></button>
+        <button id="help-button" class="btn btn-ghost" type="button" aria-label="Help and about">
+          <span class="btn-label">Help</span>
+        </button>
+      </div>
+    </header>
+
+    <main id="panels" tabindex="-1">
+      <section id="launcher" class="launcher" aria-label="Choose a tool"></section>
+    </main>
+
+    <div id="drop-overlay" class="drop-overlay" hidden>
+      <p>Drop a Clover file to open it</p>
+    </div>
+    <div id="toasts" aria-live="polite" aria-atomic="false"></div>
+    <input id="import-input" type="file" accept=".clover,.json,application/json" hidden />
+
+    <noscript>
+      <p class="noscript">Clover needs JavaScript to run. Enable it for this page and reload.</p>
+    </noscript>
+    <script type="module" src="js/main.js"></script>
+  </body>
+</html>
