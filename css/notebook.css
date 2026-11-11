@@ -268,3 +268,30 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* ----------------------------------------------------------- embedded tools */
+
+.nb-embed-body {
+  padding-top: 2px;
+}
+
+.nb-embed-host {
+  position: relative;
+  min-height: 220px;
+  max-height: 1000px;
+  overflow: auto;
+  resize: vertical;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+}
+
+.nb-embed-host.tool {
+  padding: 8px 10px;
+  gap: 8px;
+}
+
+.nb-embed-error {
+  margin: 16px;
+  color: var(--danger);
+}

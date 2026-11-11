@@ -9,10 +9,13 @@
  * Version history:
  *   1  first release; the "desmos" tool embedded a Desmos calculator.
  *   2  the "graph" tool replaces "desmos". Version 1 "desmos" tabs are migrated.
+ *   3  the "matrix" tool holds named lines (matrices and calculations) instead of a fixed A, B,
+ *      and x; older matrix state is converted by that tool's normalize. The notebook gains "embed"
+ *      cells, and the "geometry" tool is new.
  */
 
 export const FORMAT = 'clover';
-export const VERSION = 2;
+export const VERSION = 3;
 export const MAX_TABS = 24;
 export const MAX_IMPORT_BYTES = 8 * 1024 * 1024;
 export const MAX_TITLE = 60;

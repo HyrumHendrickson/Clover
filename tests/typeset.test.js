@@ -94,6 +94,24 @@ test('typing a Greek name replaces it only when the whole word is finished', () 
   assert.equal(autoSymbols('sin(theta) + 1', 9).text, 'sin(\u03b8) + 1');
 });
 
+test('big operators typed as signs render with their limits and parse as before', () => {
+  const sum = layout('\u2211(k,1,10,k^2)')[0];
+  assert.equal(sum.k, 'big');
+  assert.equal(sum.upper[0].s, '10');
+  assert.equal(layout('\u222b(x,0,1,x^2)')[0].differential.s, 'x');
+  assert.equal(layout('\u220f')[0].k, 'big', 'a bare sign is still an operator, with empty limits');
+  assert.equal(typeset('\u2211(k,1').querySelectorAll('.mt-bigstack').length, 1, 'half typed still shows the sign');
+  assert.deepEqual(kinds(layout('sum(L)')), ['func', 'fence'], 'the ASCII list sum is unchanged');
+});
+
+test('every node knows where it came from in the text', () => {
+  const [sup] = layout('x^2');
+  assert.deepEqual([sup.p, sup.e], [0, 3]);
+  const [frac] = layout('(a+b)/c');
+  assert.deepEqual([frac.p, frac.e], [0, 7]);
+  assert.deepEqual([frac.nr.from, frac.nr.to], [1, 4], 'dropped brackets are not part of the numerator');
+});
+
 test('Markdown renders a safe subset', () => {
   assert.deepEqual(
     parseBlocks('# Title\n\nSome *text*\nacross lines\n\n- a\n- b\n1. one').map((b) => b.kind),

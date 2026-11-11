@@ -209,6 +209,117 @@ test('a notebook survives export and import', () => {
   assert.deepEqual(restored.tabs[0].state, notebook.normalize(tab.state));
 });
 
+const menuItems = () => [...document.querySelectorAll('.menu .menu-item')];
+const embedCells = () => cells().filter((c) => c.classList.contains('nb-embed'));
+
+function embed(label) {
+  addButton('Embed a tool').click();
+  const item = menuItems().find((b) => b.textContent === label);
+  assert.ok(item, `${label} is in the menu`);
+  item.click();
+}
+
+test('the embed menu offers every tool except the notebook itself', () => {
+  addButton('Embed a tool').click();
+  const labels = menuItems().map((b) => b.textContent);
+  assert.deepEqual(
+    labels,
+    Object.values(TOOLS)
+      .filter((t) => t.type !== 'notebook')
+      .map((t) => t.name),
+  );
+  document.body.querySelector('.menu')?.remove();
+});
+
+test('any other tool can be embedded, and edits inside it are saved with the notebook', async () => {
+  embed('Matrices');
+  const cell = tab.state.cells.at(-1);
+  assert.equal(cell.type, 'embed');
+  assert.equal(cell.tool, 'matrix');
+  assert.ok(cell.height >= 220 && cell.height <= 1000);
+  const host = q('.nb-embed-host', cells().at(-1));
+  assert.ok(
+    host.querySelector('.matrix-tool') || host.classList.contains('matrix-tool'),
+    'the tool is mounted inside the cell',
+  );
+  assert.equal(q('.panel-error'), null);
+
+  const input = qa('input.mx-cell', host)[0];
+  type(window, input, '7');
+  assert.equal(cell.state.lines[0].cells[0][0], '7', 'the embedded tool writes into the cell state');
+  await settle();
+});
+
+test('every embeddable tool opens inside a notebook without errors', async () => {
+  while (tab.state.cells.length > 1)
+    qa('button', cells()[0])
+      .find((b) => b.title === 'Delete cell')
+      .click();
+  qa('button', cells()[0])
+    .find((b) => b.title === 'Delete cell')
+    .click();
+  const names = Object.values(TOOLS)
+    .filter((t) => t.type !== 'notebook')
+    .map((t) => t.name);
+  for (const name of names) embed(name);
+  assert.equal(embedCells().length, names.length);
+  assert.deepEqual(
+    tab.state.cells.filter((c) => c.type === 'embed').map((c) => c.tool),
+    Object.values(TOOLS)
+      .filter((t) => t.type !== 'notebook')
+      .map((t) => t.type),
+  );
+  assert.equal(qa('.nb-embed-error').length, 0);
+  assert.equal(qa('.nb-embed-host').length, names.length);
+  await settle();
+});
+
+test('moving a cell keeps embedded tools mounted rather than resetting them', async () => {
+  const hosts = qa('.nb-embed-host');
+  const last = qa('button', cells().at(-1)).find((b) => b.title === 'Move up');
+  last.click();
+  const after = qa('.nb-embed-host');
+  assert.equal(after.length, hosts.length);
+  for (const host of hosts) assert.ok(after.includes(host), 'each embedded tool is the same element as before');
+  await settle();
+});
+
+test('a notebook limits embedded tools and never embeds a notebook', () => {
+  const matrix = (id) => ({ type: 'embed', id, tool: 'matrix', height: 300 });
+  const state = notebook.normalize({
+    cells: [
+      { type: 'embed', id: 'n', tool: 'notebook' },
+      { type: 'embed', id: 'u', tool: 'nope' },
+      { type: 'embed', id: 'p', tool: '__proto__' },
+      { type: 'embed', id: 'c', tool: 'constructor' },
+      { type: 'embed', id: 'big', tool: 'graph', height: 1e9, state: 'garbage' },
+      { type: 'embed', id: 'small', tool: 'geometry', height: -5, state: { rows: 7 } },
+      ...Array.from({ length: 12 }, (_, i) => matrix(`m${i}`)),
+    ],
+  });
+  const embeds = state.cells.filter((c) => c.type === 'embed');
+  assert.equal(embeds.length, 8, 'at most eight embedded tools');
+  assert.deepEqual(
+    embeds.slice(0, 2).map((c) => [c.tool, c.height]),
+    [
+      ['graph', 1000],
+      ['geometry', 220],
+    ],
+    'heights are clamped',
+  );
+  assert.ok(!embeds.some((c) => ['notebook', 'nope', '__proto__', 'constructor'].includes(c.tool)));
+  assert.ok(embeds[0].state.rows.length > 0, 'embedded state is normalised by its own tool');
+  assert.deepEqual(notebook.normalize(state), state, 'normalising twice changes nothing');
+});
+
+test('embedded tools survive export and import', () => {
+  const json = JSON.stringify(exportWorkspace({ activeId: tab.id, tabs: [tab] }));
+  const restored = parseImport(json, TOOLS, () => 'id');
+  const kinds = (state) => state.cells.filter((c) => c.type === 'embed').map((c) => [c.tool, JSON.stringify(c.state)]);
+  assert.deepEqual(kinds(restored.tabs[0].state), kinds(notebook.normalize(tab.state)));
+  assert.ok(kinds(restored.tabs[0].state).length > 0);
+});
+
 test('the launcher preview draws without errors', () => {
   const c = document.createElement('canvas');
   assert.doesNotThrow(() =>

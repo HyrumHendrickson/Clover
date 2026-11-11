@@ -27,7 +27,7 @@ test('first run shows the launcher with one card per tool', () => {
   assert.equal(app.tabs.length, 0);
   assert.equal(elements.launcher.hidden, false);
   assert.equal(elements.launcher.querySelectorAll('.launch-card').length, TOOL_LIST.length);
-  assert.equal(TOOL_LIST.length, 7);
+  assert.equal(TOOL_LIST.length, 8);
 });
 
 test('every tool opens without errors, including two of the same kind', async () => {
@@ -121,49 +121,107 @@ test('tab limit is enforced', () => {
   assert.equal(app.tabs.length, TOOL_LIST.length + 1);
 });
 
-test('matrix tool multiplies and explains a selected entry', () => {
+const MINUS = '\u2212';
+const entries = (root) => qa('.mx-entry', root).map((e) => e.textContent);
+
+test('matrix tool defines matrices and calculates with them on later lines', async () => {
   const tab = app.tabs.find((t) => t.type === 'matrix');
   app.activate(tab.id);
-  const out = qa('.mx-out').map((c) => c.textContent);
-  assert.deepEqual(out, ['3', '-1', '4', '2'], 'default A=[[2,1],[1,3]], B=[[1,-1],[1,1]]');
-  qa('.mx-out')[3].click();
-  assert.match(q('.mx-explain').textContent, /\(AB\)₂₂/);
-  assert.match(q('.mx-explain').textContent, /= 2/);
+  await tick(160);
+  const results = qa('.mx-result');
+  assert.deepEqual(entries(results[0]), ['3', '0', '2', '4'], 'A+B, with A=[[2,1],[1,3]] and B=[[1,-1],[1,1]]');
+  assert.deepEqual(entries(results[1]), ['3', `${MINUS}1`, '4', '2'], 'A*B');
 
   const cell = qa('input.mx-cell')[0];
   type(window, cell, '1/2');
-  assert.equal(tab.state.A[0][0], '1/2');
-  assert.equal(qa('.mx-out')[0].textContent, '1.5', '(1/2)(1) + (1)(1)');
+  assert.equal(tab.state.lines[0].cells[0][0], '1/2');
+  await tick(160);
+  const product = qa('.mx-result')[1];
+  assert.equal(
+    qa('.mx-entry', product)[0].querySelectorAll('.mt-frac').length,
+    1,
+    'the entry 3/2 stays an exact fraction',
+  );
+  assert.equal(qa('.mx-entry .mt-num', product)[0].textContent, '3');
 
   type(window, cell, 'oops');
-  assert.equal(qa('.mx-out')[0].textContent, '?');
-  assert.ok(cell.hasAttribute('aria-invalid'));
+  await tick(160);
+  assert.equal(cell.getAttribute('aria-invalid'), 'true');
+  assert.match(q('.mx-matrix .mx-error').textContent, /cannot be read/);
+  assert.match(qa('.mx-result .mx-error')[0].textContent, /A has an entry that cannot be read/);
   type(window, cell, '2');
-
-  qa('.segment')[1].click();
-  assert.equal(tab.state.mode, 'mv');
-  assert.deepEqual(
-    qa('.mx-out').map((c) => c.textContent),
-    ['3', '4'],
-  );
-  assert.ok(q('.mx-columns .mx-term'), 'column picture appears in matrix-vector mode');
-  assert.equal(q('.mx-canvas').hidden, false, 'geometry is available for 2x2');
+  await tick(160);
+  assert.equal(cell.getAttribute('aria-invalid'), 'false');
 });
 
-test('matrix dimensions can change and survive a round trip', () => {
+test('matrix tool reports dimension errors in plain words and can name results', async () => {
   const tab = app.tabs.find((t) => t.type === 'matrix');
   app.activate(tab.id);
-  qa('.segment')[0].click();
-  const increase = qa('button').find((b) => b.getAttribute('aria-label') === 'Increase A columns');
-  increase.click();
-  assert.equal(tab.state.n, 3);
-  assert.equal(tab.state.A[0].length, 3);
-  assert.equal(tab.state.B.length, 3);
-  assert.equal(qa('.mx-out').length, 4);
-  assert.equal(q('.mx-canvas').hidden, true, 'geometry hides for non-2x2');
+  const field = qa('.mf-input')[0];
+  type(window, field, 'A+[1,2,3]');
+  await tick(160);
+  assert.match(qa('.mx-result .mx-error')[0].textContent, /Cannot add a 2\u00d72 matrix and a 3\u00d71 matrix/);
+  type(window, field, 'C = A*B');
+  await tick(160);
+  assert.equal(tab.state.lines[2].text, 'C = A*B');
+  type(window, field, 'A+B');
+  await tick(160);
+});
+
+test('typing matrix or vector on a line makes a grid, and its size can be set', async () => {
+  const tab = app.tabs.find((t) => t.type === 'matrix');
+  app.activate(tab.id);
+  const before = tab.state.lines.length;
+  const field = qa('.mf-input').at(-1);
+  type(window, field, 'matrix');
+  const made = tab.state.lines.at(-1);
+  assert.equal(tab.state.lines.length, before, 'the typed line became the matrix');
+  assert.equal(made.kind, 'matrix');
+  assert.equal(made.name, 'C', 'the next free letter after A and B');
+  assert.equal(made.cells.length, 2);
+
+  const [r, c] = qa('.mx-size', qa('.mx-matrix').at(-1));
+  assert.ok(r && c, 'rows and columns can be set');
+  r.value = '3';
+  r.dispatchEvent(new window.Event('change', { bubbles: true }));
+  assert.equal(tab.state.lines.at(-1).cells.length, 3);
+  const [, c2] = qa('.mx-size', qa('.mx-matrix').at(-1));
+  c2.value = '4';
+  c2.dispatchEvent(new window.Event('change', { bubbles: true }));
+  assert.equal(tab.state.lines.at(-1).cells[0].length, 4);
+  assert.equal(qa('input.mx-cell', qa('.mx-matrix').at(-1)).length, 12, 'a 3 by 4 grid');
+
+  const add = qa('button', panel()).find((b) => b.textContent === 'Vector');
+  add.click();
+  const vector = tab.state.lines.at(-1);
+  assert.equal(vector.name, 'u');
+  assert.deepEqual([vector.cells.length, vector.cells[0].length], [3, 1]);
+  await tick(160);
+});
+
+test('matrix tool state survives a round trip and upgrades the old layout', () => {
+  const tab = app.tabs.find((t) => t.type === 'matrix');
   const json = JSON.stringify(exportWorkspace({ activeId: tab.id, tabs: [tab] }));
   const restored = parseImport(json, TOOLS, () => 'x');
-  assert.equal(restored.tabs[0].state.n, 3);
+  assert.deepEqual(restored.tabs[0].state, TOOLS.matrix.normalize(tab.state));
+
+  const old = TOOLS.matrix.normalize({
+    mode: 'mv',
+    m: 2,
+    n: 2,
+    p: 2,
+    A: [
+      ['2', '1'],
+      ['1', '3'],
+    ],
+    x: ['1', '1'],
+    view: { cx: 0, cy: 0, radius: 7 },
+  });
+  assert.deepEqual(
+    old.lines.map((l) => (l.kind === 'matrix' ? l.name : l.text)),
+    ['A', 'x', 'A*x'],
+  );
+  assert.deepEqual(old.lines[1].cells, [['1'], ['1']]);
 });
 
 test('complex tool compiles, reports errors, and keeps the last good function', async () => {

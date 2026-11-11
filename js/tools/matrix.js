@@ -1,818 +1,566 @@
-import { h, clamp, onResize } from '../core/dom.js';
+import { clamp, debounce, h } from '../core/dom.js';
 import { icon } from '../core/icons.js';
 import { openMenu } from '../core/menu.js';
-import { evaluateNumber } from '../lib/expr.js';
-import { det2, dotTerms, formatNumber, multiply } from '../lib/matrix.js';
-import { View, drawArrow, drawGrid, fitCanvas, normalizeView, themeColors } from '../lib/viewport.js';
-import { attachPanZoom } from '../lib/interact.js';
+import { createMathField } from '../core/mathfield.js';
+import { evaluateLines, formatScalar, isMatrix, MAX_DIM } from '../lib/linalg.js';
+import { typeset } from '../lib/graph/typeset.js';
+import { fitCanvas } from '../lib/viewport.js';
 
-const MAX_DIM = 6;
-const DEFAULT_VIEW = { cx: 0, cy: 0, radius: 7 };
-const SUBSCRIPTS = '\u2080\u2081\u2082\u2083\u2084\u2085\u2086\u2087\u2088\u2089';
-const sub = (n) => String(n).replace(/\d/g, (d) => SUBSCRIPTS[Number(d)]);
-const TERM_COLORS = ['a', 'b', 'c'];
+const MAX_LINES = 40;
+const MAX_CELL = 24;
+const MAX_TEXT = 300;
+const ID_PATTERN = /^[A-Za-z0-9_-]{1,24}$/;
+const NAME_PATTERN = /^[\p{L}][\p{L}\p{N}_]{0,15}$/u;
+const SHORTCUT = /^\s*(?:([\p{L}][\p{L}\p{N}_]*)\s*=\s*)?(matrix|vector)\s*$/u;
 
-const DEFAULTS = {
-  A: [
-    ['2', '1'],
-    ['1', '3'],
-  ],
-  B: [
-    ['1', '-1'],
-    ['1', '1'],
-  ],
-  x: ['1', '1'],
-};
+/* ------------------------------------------------------------------- state */
 
-const dim = (value, fallback) => (Number.isInteger(value) ? clamp(value, 1, MAX_DIM) : fallback);
+const zeroCells = (rows, cols) => Array.from({ length: rows }, () => Array.from({ length: cols }, () => '0'));
 
-function readMatrix(raw, rows, cols, fallback) {
+function readCells(raw, fallbackRows = 2, fallbackCols = 2) {
+  const source = Array.isArray(raw) ? raw.filter(Array.isArray).slice(0, MAX_DIM) : [];
+  const rows = source.length || fallbackRows;
+  const cols = source.length ? clamp(Math.max(1, ...source.map((row) => row.length)), 1, MAX_DIM) : fallbackCols;
   return Array.from({ length: rows }, (_, i) =>
     Array.from({ length: cols }, (_, j) => {
-      const cell = Array.isArray(raw) && Array.isArray(raw[i]) ? raw[i][j] : undefined;
-      if (typeof cell === 'string' || typeof cell === 'number') return String(cell).slice(0, 14);
-      return fallback?.[i]?.[j] ?? '0';
+      const cell = source[i]?.[j];
+      return typeof cell === 'string' || typeof cell === 'number' ? String(cell).slice(0, MAX_CELL) : '0';
     }),
   );
 }
 
-export function normalize(raw) {
-  const r = raw && typeof raw === 'object' ? raw : {};
-  const m = dim(r.m, 2);
-  const n = dim(r.n, 2);
-  const p = dim(r.p, 2);
-  const x = readMatrix(
-    Array.isArray(r.x) ? r.x.map((v) => [v]) : null,
-    n,
-    1,
-    DEFAULTS.x.map((v) => [v]),
-  ).map((row) => row[0]);
-  return {
-    mode: r.mode === 'mv' ? 'mv' : 'mm',
-    m,
-    n,
-    p,
-    A: readMatrix(r.A, m, n, DEFAULTS.A),
-    B: readMatrix(r.B, n, p, DEFAULTS.B),
-    x,
-    view: normalizeView(r.view, DEFAULT_VIEW),
-  };
+function normalizeLine(raw, taken, counter) {
+  if (!raw || typeof raw !== 'object') return null;
+  if (raw.kind !== 'matrix' && raw.kind !== 'expr') return null;
+  let id = typeof raw.id === 'string' && ID_PATTERN.test(raw.id) && !taken.has(raw.id) ? raw.id : null;
+  while (id === null || taken.has(id)) {
+    counter.n += 1;
+    id = `l${counter.n}`;
+  }
+  taken.add(id);
+  if (raw.kind === 'expr') {
+    return {
+      id,
+      kind: 'expr',
+      text: typeof raw.text === 'string' ? raw.text.replace(/[\r\n]+/g, ' ').slice(0, MAX_TEXT) : '',
+    };
+  }
+  const name = typeof raw.name === 'string' && NAME_PATTERN.test(raw.name.trim()) ? raw.name.trim() : '';
+  return { id, kind: 'matrix', name, cells: readCells(raw.cells) };
 }
 
-const parseCells = (cells) => cells.map((row) => row.map((text) => evaluateNumber(text)));
-const allFinite = (matrix) => matrix.every((row) => row.every(Number.isFinite));
-const fmtInput = (value) => String(Number(value.toFixed(4)));
+/** Version 1 of this tool held A, B, and a vector x; they become lines. */
+function fromLegacy(raw) {
+  const A = readCells(raw.A);
+  const lines = [{ kind: 'matrix', name: 'A', cells: A }];
+  if (raw.mode === 'mv') {
+    const x = Array.isArray(raw.x) ? raw.x.map((v) => [v]) : [['1'], ['1']];
+    lines.push({ kind: 'matrix', name: 'x', cells: readCells(x) }, { kind: 'expr', text: 'A*x' });
+  } else {
+    lines.push({ kind: 'matrix', name: 'B', cells: readCells(raw.B) }, { kind: 'expr', text: 'A*B' });
+  }
+  return lines;
+}
 
-const PRESETS = [
+const STARTER = () => [
   {
-    label: 'Identity',
-    data: (m, n) => Array.from({ length: m }, (_, i) => Array.from({ length: n }, (_, j) => (i === j ? '1' : '0'))),
-  },
-  {
-    label: 'Rotate 90\u00b0',
-    two: [
-      ['0', '-1'],
-      ['1', '0'],
+    kind: 'matrix',
+    name: 'A',
+    cells: [
+      ['2', '1'],
+      ['1', '3'],
     ],
   },
   {
-    label: 'Rotate 45\u00b0',
-    two: [
-      ['sqrt(2)/2', '-sqrt(2)/2'],
-      ['sqrt(2)/2', 'sqrt(2)/2'],
-    ],
-  },
-  {
-    label: 'Shear',
-    two: [
+    kind: 'matrix',
+    name: 'B',
+    cells: [
+      ['1', '-1'],
       ['1', '1'],
-      ['0', '1'],
     ],
   },
-  {
-    label: 'Scale',
-    two: [
-      ['2', '0'],
-      ['0', '0.5'],
-    ],
-  },
-  {
-    label: 'Reflect over x-axis',
-    two: [
-      ['1', '0'],
-      ['0', '-1'],
-    ],
-  },
-  {
-    label: 'Project onto x-axis',
-    two: [
-      ['1', '0'],
-      ['0', '0'],
-    ],
-  },
+  { kind: 'expr', text: 'A+B' },
+  { kind: 'expr', text: 'A*B' },
 ];
+
+function normalize(raw) {
+  const r = raw && typeof raw === 'object' ? raw : {};
+  const taken = new Set();
+  const counter = { n: 0 };
+  let list = Array.isArray(r.lines) ? r.lines : Array.isArray(r.A) ? fromLegacy(r) : [];
+  list = list.slice(0, MAX_LINES);
+  let lines = list.map((l) => normalizeLine(l, taken, counter)).filter(Boolean);
+  if (lines.length === 0) {
+    taken.clear();
+    lines = STARTER().map((l) => normalizeLine(l, taken, counter));
+  }
+  return { lines };
+}
+
+/* -------------------------------------------------------------------- tool */
+
+function matrixDisplay(matrix) {
+  const out = h(
+    'div',
+    { class: 'mx-out', role: 'group', 'aria-label': `Matrix, ${matrix.shape}` },
+    ...matrix.a.flat().map((x) => h('span', { class: 'mx-entry' }, typeset(formatScalar(x)))),
+  );
+  out.style.setProperty('--cols', String(matrix.cols));
+  return out;
+}
 
 export default {
   type: 'matrix',
   name: 'Matrices',
   description:
-    'Multiply matrices and matrix-vector products, one dot product at a time, with the geometry of 2\u00d72 maps.',
+    'Define matrices and vectors, then add, multiply, invert, and more on the next line. Entries stay exact fractions.',
   defaultState: () => normalize({}),
   normalize,
 
   preview(canvas, colors) {
     const { ctx, width, height } = fitCanvas(canvas);
-    const view = new View({ cx: 0, cy: 0, radius: 2.6 }, width, height);
     ctx.fillStyle = colors.bg;
     ctx.fillRect(0, 0, width, height);
-    drawGrid(ctx, view, colors, { labels: false });
-    const M = [
-      [1.2, 0.7],
-      [0.1, 0.9],
-    ];
-    const map = (x, y) => view.toScreen(M[0][0] * x + M[0][1] * y, M[1][0] * x + M[1][1] * y);
-    ctx.save();
-    ctx.globalAlpha = 0.5;
-    ctx.strokeStyle = colors.accent;
-    ctx.beginPath();
-    for (let k = -6; k <= 6; k += 1) {
-      const a = map(k, -6);
-      const b = map(k, 6);
-      const c = map(-6, k);
-      const d = map(6, k);
-      ctx.moveTo(a[0], a[1]);
-      ctx.lineTo(b[0], b[1]);
-      ctx.moveTo(c[0], c[1]);
-      ctx.lineTo(d[0], d[1]);
-    }
-    ctx.stroke();
-    ctx.restore();
-    const o = map(0, 0);
-    const i = map(1, 0);
-    const j = map(0, 1);
-    drawArrow(ctx, o[0], o[1], i[0], i[1], { color: colors.a, width: 2.5 });
-    drawArrow(ctx, o[0], o[1], j[0], j[1], { color: colors.b, width: 2.5 });
+    const box = Math.min(width * 0.22, height * 0.5);
+    const y = (height - box) / 2;
+    const bracket = (x) => {
+      ctx.strokeStyle = colors.ink;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(x + 6, y);
+      ctx.lineTo(x, y);
+      ctx.lineTo(x, y + box);
+      ctx.lineTo(x + 6, y + box);
+      ctx.moveTo(x + box - 6, y);
+      ctx.lineTo(x + box, y);
+      ctx.lineTo(x + box, y + box);
+      ctx.lineTo(x + box - 6, y + box);
+      ctx.stroke();
+      ctx.fillStyle = colors.grid;
+      for (let i = 0; i < 2; i += 1) {
+        for (let j = 0; j < 2; j += 1) {
+          ctx.fillRect(x + box * (0.25 + 0.3 * j), y + box * (0.22 + 0.34 * i), box * 0.16, box * 0.16);
+        }
+      }
+    };
+    const gap = (width - box * 3) / 4;
+    [gap, gap * 2 + box, gap * 3 + box * 2].forEach(bracket);
+    ctx.fillStyle = colors.accent;
+    ctx.font = `${Math.round(box * 0.5)}px sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('\u00d7', gap * 1.5 + box, height / 2);
+    ctx.fillText('=', gap * 2.5 + box * 2, height / 2);
   },
 
   mount(root, ctx) {
     const state = ctx.state;
-    const view = new View(state.view, 1, 1);
-    const ui = {};
-    let selected = { i: 0, j: 0 };
-    let hover = null;
-    let timer = null;
-    let numeric = { A: [], B: [], C: [], valid: false };
-    let grids = {};
+    const lineEls = new Map();
+    const fields = new Map();
+    let result = [];
 
-    const dims = () => ({ m: state.m, n: state.n, p: state.mode === 'mv' ? 1 : state.p });
-    const effectiveB = () => (state.mode === 'mv' ? state.x.map((v) => [v]) : state.B);
-    const geometryAvailable = () => {
-      const { m, n, p } = dims();
-      return state.mode === 'mv' ? m === 2 && n === 2 : m === 2 && n === 2 && p === 2;
-    };
+    const list = h('ol', { class: 'mx-lines' });
+    const indexOf = (id) => state.lines.findIndex((l) => l.id === id);
 
-    /* --------------------------------------------------------- grid builders */
+    /* ------------------------------------------------------------ evaluate */
 
-    function matrixGrid({ rows, cols, editable, name, variant, get, set, onChange }) {
-      const cells = [];
-      const el = h('div', { class: `mx-grid mx-grid-${variant}`, role: 'group', 'aria-label': `Matrix ${name}` });
-      el.style.setProperty('--cols', String(cols));
-      for (let i = 0; i < rows; i += 1) {
-        const row = [];
-        for (let j = 0; j < cols; j += 1) {
-          let cell;
-          if (editable) {
-            cell = h('input', {
-              class: 'mx-cell',
-              type: 'text',
-              inputmode: 'decimal',
-              spellcheck: 'false',
-              autocomplete: 'off',
-              value: get(i, j),
-              'aria-label': `${name} row ${i + 1}, column ${j + 1}`,
-              onfocus: () => cell.select(),
-              oninput: () => {
-                set(i, j, cell.value.slice(0, 14));
-                onChange();
-              },
-              onkeydown: (event) => {
-                const target = { ArrowUp: [i - 1, j], ArrowDown: [i + 1, j], Enter: [i + 1, j] }[event.key];
-                if (!target) return;
-                const next = cells[target[0]]?.[target[1]];
-                if (event.key === 'Enter' && !next) return;
-                event.preventDefault();
-                next?.focus();
-              },
-            });
-          } else {
-            cell = h('button', {
-              class: 'mx-cell mx-out',
-              type: 'button',
-              'aria-label': `Result row ${i + 1}, column ${j + 1}`,
-              onclick: () => select(i, j),
-              onfocus: () => select(i, j),
-              onpointerenter: (event) => {
-                if (event.pointerType === 'mouse') select(i, j);
-              },
-            });
-          }
-          row.push(cell);
-        }
-        cells.push(row);
-        el.append(...row);
-      }
-      return { el, cells };
+    function evaluate() {
+      result = evaluateLines(state.lines);
+      state.lines.forEach((line, index) => syncLine(line, result[index]));
     }
+    const evaluateLater = debounce(evaluate, 100);
 
-    const readOnlyGrid = (values, colorClass) => {
-      const el = h('div', { class: `mx-grid mx-mini ${colorClass}`, 'aria-hidden': 'true' });
-      el.style.setProperty('--cols', '1');
-      values.forEach((v) => el.append(h('div', { class: 'mx-cell mx-static' }, formatNumber(v))));
-      return el;
-    };
-
-    /* ------------------------------------------------------------ interaction */
-
-    function select(i, j) {
-      if (selected.i === i && selected.j === j) return;
-      selected = { i, j };
-      highlight();
-    }
-
-    function setHover(spec) {
-      hover = spec;
-      highlight();
-    }
-
-    function highlight() {
-      const { m, p } = dims();
-      selected = { i: Math.min(selected.i, m - 1), j: Math.min(selected.j, p - 1) };
-      const { i, j } = selected;
-      const aRow = hover?.aCol !== undefined ? null : i;
-      const aCol = hover?.aCol ?? null;
-      const bCol = hover ? null : j;
-      const bRow = hover?.bRow ?? null;
-      grids.A.cells.forEach((row, r) => row.forEach((c) => c.classList.toggle('is-row', r === aRow)));
-      grids.A.cells.forEach((row) => row.forEach((c, k) => c.classList.toggle('is-col', k === aCol)));
-      grids.B.cells.forEach((row, r) =>
-        row.forEach((c, k) => {
-          c.classList.toggle('is-col', k === bCol);
-          c.classList.toggle('is-row', r === bRow);
-        }),
-      );
-      grids.C.cells.forEach((row, r) =>
-        row.forEach((c, k) => {
-          c.classList.toggle('is-target', r === i && k === j);
-          c.setAttribute('aria-pressed', r === i && k === j ? 'true' : 'false');
-        }),
-      );
-      renderExplanation();
-    }
-
-    function renderExplanation() {
-      const out = ui.explain;
-      out.replaceChildren();
-      if (!numeric.valid) {
-        out.append(h('p', { class: 'mx-hint' }, 'Enter numbers or simple expressions such as 1/2 or sqrt(2).'));
-        return;
-      }
-      const { i, j } = selected;
-      const terms = dotTerms(numeric.A, numeric.B, i, j);
-      const total = terms.reduce((sum, t) => sum + t.product, 0);
-      const target = state.mode === 'mv' ? `(Ax)${sub(i + 1)}` : `(AB)${sub(i + 1)}${sub(j + 1)}`;
-      const row = `row ${i + 1} of A`;
-      const column = state.mode === 'mv' ? 'the vector x' : `column ${j + 1} of B`;
-      out.append(
-        h('p', { class: 'mx-explain-title' }, `${target} is ${row} dotted with ${column}`),
-        h(
-          'p',
-          { class: 'mx-sum' },
-          terms.map((t, k) => [
-            k > 0 ? h('span', { class: 'mx-op' }, ' + ') : null,
-            h('span', { class: 'mx-t-row' }, formatNumber(t.a)),
-            h('span', { class: 'mx-op' }, ' \u00d7 '),
-            h('span', { class: 'mx-t-col' }, formatNumber(t.b)),
-          ]),
-        ),
-        h(
-          'p',
-          { class: 'mx-sum mx-sum-products' },
-          terms.map((t, k) => [k > 0 ? h('span', { class: 'mx-op' }, ' + ') : null, formatNumber(t.product)]),
-          h('span', { class: 'mx-op' }, ' = '),
-          h('strong', {}, formatNumber(total)),
-        ),
-      );
-    }
-
-    function renderColumns() {
-      const host = ui.columns;
-      host.replaceChildren();
-      host.hidden = state.mode !== 'mv' || !numeric.valid;
-      if (host.hidden) return;
-      const { m, n } = dims();
-      const pieces = [];
-      for (let k = 0; k < n; k += 1) {
-        const color = TERM_COLORS[k % TERM_COLORS.length];
-        const column = numeric.A.map((row) => row[k]);
-        const term = h(
-          'div',
-          {
-            class: `mx-term mx-color-${color}`,
-            tabindex: 0,
-            'aria-label': `Term ${k + 1}: x${sub(k + 1)} times column ${k + 1} of A`,
-            onpointerenter: () => setHover({ aCol: k, bRow: k }),
-            onpointerleave: () => setHover(null),
-            onfocus: () => setHover({ aCol: k, bRow: k }),
-            onblur: () => setHover(null),
-          },
-          h('span', { class: 'mx-scalar' }, formatNumber(numeric.B[k][0])),
-          h('span', { class: 'mx-op' }, '\u00d7'),
-          readOnlyGrid(column, ''),
+    function syncLine(line, out) {
+      const refs = lineEls.get(line.id);
+      if (!refs || !out) return;
+      if (line.kind === 'matrix') {
+        refs.cells.forEach((row, i) =>
+          row.forEach((input, j) => {
+            const message = out.cellErrors.get(`${i},${j}`);
+            input.setAttribute('aria-invalid', message ? 'true' : 'false');
+            input.title = message ?? '';
+          }),
         );
-        if (k > 0) pieces.push(h('span', { class: 'mx-op mx-plus' }, '+'));
-        pieces.push(term);
-      }
-      pieces.push(
-        h('span', { class: 'mx-op mx-plus' }, '='),
-        readOnlyGrid(
-          numeric.C.map((row) => row[0]),
-          'mx-result',
-        ),
-      );
-      host.append(
-        h(
-          'p',
-          { class: 'mx-columns-title' },
-          `Ax is a combination of the ${n} column${n === 1 ? '' : 's'} of A, weighted by the entries of x`,
-        ),
-        h('div', { class: 'mx-columns-row', 'data-rows': String(m) }, pieces),
-      );
-    }
-
-    function recompute() {
-      const A = parseCells(state.A);
-      const B = parseCells(effectiveB());
-      const valid = allFinite(A) && allFinite(B);
-      let C = [];
-      if (valid) C = multiply(A, B);
-      numeric = { A, B, C, valid };
-      state.A.forEach((row, i) =>
-        row.forEach((_, j) => grids.A.cells[i][j].toggleAttribute('aria-invalid', !Number.isFinite(A[i][j]))),
-      );
-      effectiveB().forEach((row, i) =>
-        row.forEach((_, j) => grids.B.cells[i][j].toggleAttribute('aria-invalid', !Number.isFinite(B[i][j]))),
-      );
-      grids.C.cells.forEach((row, i) =>
-        row.forEach((cell, j) => {
-          const text = valid ? formatNumber(C[i][j]) : '?';
-          cell.textContent = text;
-          cell.setAttribute('aria-label', `Result row ${i + 1}, column ${j + 1}: ${text}`);
-        }),
-      );
-    }
-
-    function refresh({ geometry = true } = {}) {
-      recompute();
-      highlight();
-      renderColumns();
-      if (geometry) drawGeometry();
-    }
-
-    function onEdit() {
-      stopPlaying();
-      refresh();
-      ctx.save();
-    }
-
-    /* ------------------------------------------------------------ build layout */
-
-    function build() {
-      const { m, n, p } = dims();
-      const labelB = state.mode === 'mv' ? 'x' : 'B';
-      grids = {
-        A: matrixGrid({
-          rows: m,
-          cols: n,
-          editable: true,
-          name: 'A',
-          variant: 'a',
-          get: (i, j) => state.A[i][j],
-          set: (i, j, value) => {
-            state.A[i][j] = value;
-          },
-          onChange: onEdit,
-        }),
-        B: matrixGrid({
-          rows: n,
-          cols: p,
-          editable: true,
-          name: labelB,
-          variant: 'b',
-          get: (i, j) => (state.mode === 'mv' ? state.x[i] : state.B[i][j]),
-          set: (i, j, value) => {
-            if (state.mode === 'mv') state.x[i] = value;
-            else state.B[i][j] = value;
-          },
-          onChange: onEdit,
-        }),
-        C: matrixGrid({ rows: m, cols: p, editable: false, name: state.mode === 'mv' ? 'Ax' : 'AB', variant: 'c' }),
-      };
-      const caption = (name, rows, cols) =>
-        h(
-          'div',
-          { class: 'mx-caption' },
-          h('span', { class: 'mx-name' }, name),
-          h('span', { class: 'mx-dim' }, `${rows} \u00d7 ${cols}`),
-        );
-      const equation = h(
-        'div',
-        { class: 'mx-equation' },
-        h('div', { class: 'mx-part' }, caption('A', m, n), grids.A.el),
-        h('div', { class: 'mx-symbol', 'aria-hidden': 'true' }, '\u00d7'),
-        h('div', { class: 'mx-part' }, caption(labelB, n, p), grids.B.el),
-        h('div', { class: 'mx-symbol', 'aria-hidden': 'true' }, '='),
-        h('div', { class: 'mx-part' }, caption(state.mode === 'mv' ? 'Ax' : 'AB', m, p), grids.C.el),
-      );
-      ui.equationHost.replaceChildren(equation);
-      ui.pCtl.hidden = state.mode === 'mv';
-      ui.nLabel.textContent = state.mode === 'mv' ? 'A columns = x length' : 'A columns = B rows';
-      updateSteppers();
-      ui.modeButtons.forEach((b) => b.setAttribute('aria-checked', String(b.dataset.mode === state.mode)));
-      refresh();
-    }
-
-    function updateSteppers() {
-      ui.mOut.textContent = String(state.m);
-      ui.nOut.textContent = String(state.n);
-      ui.pOut.textContent = String(state.p);
-    }
-
-    function resizeState(key, delta) {
-      const next = clamp(state[key] + delta, 1, MAX_DIM);
-      if (next === state[key]) return;
-      state[key] = next;
-      state.A = readMatrix(state.A, state.m, state.n, null);
-      state.B = readMatrix(state.B, state.n, state.p, null);
-      state.x = readMatrix(
-        state.x.map((v) => [v]),
-        state.n,
-        1,
-        null,
-      ).map((row) => row[0]);
-      stopPlaying();
-      build();
-      ctx.save();
-    }
-
-    function stepper(key, label) {
-      const out = h('output', { class: 'stepper-value', 'aria-live': 'polite' });
-      const labelEl = h('span', { class: 'field-label' }, label);
-      const el = h(
-        'div',
-        { class: 'field', role: 'group', 'aria-label': label },
-        labelEl,
-        h(
-          'div',
-          { class: 'stepper' },
-          h(
-            'button',
-            {
-              class: 'btn btn-icon',
-              type: 'button',
-              'aria-label': `Decrease ${label}`,
-              onclick: () => resizeState(key, -1),
-            },
-            '\u2212',
-          ),
-          out,
-          h(
-            'button',
-            {
-              class: 'btn btn-icon',
-              type: 'button',
-              'aria-label': `Increase ${label}`,
-              onclick: () => resizeState(key, 1),
-            },
-            '+',
-          ),
-        ),
-      );
-      return { el, out, labelEl };
-    }
-
-    function setMode(mode) {
-      if (state.mode === mode) return;
-      state.mode = mode;
-      stopPlaying();
-      build();
-      ctx.save();
-    }
-
-    function applyPreset(preset) {
-      if (preset.two) {
-        state.m = 2;
-        state.n = 2;
-        state.A = preset.two.map((row) => [...row]);
-        state.B = readMatrix(state.B, 2, state.p, null);
-        state.x = readMatrix(
-          state.x.map((v) => [v]),
-          2,
-          1,
-          null,
-        ).map((row) => row[0]);
-      } else {
-        state.A = preset.data(state.m, state.n);
-      }
-      stopPlaying();
-      build();
-      ctx.save();
-    }
-
-    function randomize() {
-      const rand = () => String(Math.floor(Math.random() * 7) - 3);
-      state.A = state.A.map((row) => row.map(rand));
-      state.B = state.B.map((row) => row.map(rand));
-      state.x = state.x.map(rand);
-      stopPlaying();
-      build();
-      ctx.save();
-    }
-
-    /* ------------------------------------------------------------ step player */
-
-    function stopPlaying() {
-      if (timer) clearInterval(timer);
-      timer = null;
-      if (ui.playButton) {
-        ui.playButton.replaceChildren(icon('play', 14), ' Step through');
-        ui.playButton.setAttribute('aria-pressed', 'false');
-      }
-    }
-
-    function togglePlay() {
-      if (timer) {
-        stopPlaying();
+        refs.note.hidden = !out.error;
+        refs.note.textContent = out.error ?? '';
         return;
       }
-      ui.playButton.replaceChildren(icon('stop', 14), ' Stop');
-      ui.playButton.setAttribute('aria-pressed', 'true');
-      timer = setInterval(() => {
-        const { m, p } = dims();
-        let { i, j } = selected;
-        j += 1;
-        if (j >= p) {
-          j = 0;
-          i = (i + 1) % m;
-        }
-        selected = { i, j };
-        highlight();
-      }, 1100);
+      refs.result.replaceChildren();
+      refs.field.el.classList.toggle('is-invalid', Boolean(out.error));
+      if (out.error) {
+        refs.result.append(h('p', { class: 'mx-error', role: 'alert' }, out.error));
+      } else if (out.value !== null) {
+        const value = out.value;
+        const shown = isMatrix(value)
+          ? matrixDisplay(value)
+          : h('span', { class: 'mx-scalar' }, typeset(formatScalar(value)));
+        refs.result.append(
+          h('div', { class: 'mx-answer' }, h('span', { class: 'mx-equals', 'aria-hidden': 'true' }, '='), shown),
+        );
+      }
+      refs.result.hidden = refs.result.childNodes.length === 0;
     }
 
-    /* --------------------------------------------------------------- geometry */
+    /* ------------------------------------------------------------ line ops */
 
-    const dragHandler = {
-      hitTest(px, py) {
-        if (state.mode !== 'mv' || !geometryAvailable() || !numeric.valid) return false;
-        const [sx, sy] = view.toScreen(numeric.B[0][0], numeric.B[1][0]);
-        return Math.hypot(px - sx, py - sy) < 16;
-      },
-      move(px, py) {
-        const [wx, wy] = view.toWorld(px, py);
-        const snap = (v) => Math.round(v * 4) / 4;
-        state.x = [fmtInput(snap(wx)), fmtInput(snap(wy))];
-        grids.B.cells[0][0].value = state.x[0];
-        grids.B.cells[1][0].value = state.x[1];
-        refresh();
-        ctx.save();
-      },
+    const taken = () =>
+      new Set(
+        state.lines
+          .flatMap((l) => (l.kind === 'matrix' && l.name ? [l.name] : []))
+          .concat(
+            state.lines.flatMap((l) =>
+              l.kind === 'expr' ? [...l.text.matchAll(/^\s*([\p{L}][\p{L}\p{N}_]*)\s*=/gu)].map((m) => m[1]) : [],
+            ),
+          ),
+      );
+    const nextName = (letters) => {
+      const used = taken();
+      return [...letters].find((c) => !used.has(c)) ?? `${letters[0]}${used.size}`;
     };
 
-    function drawGeometry() {
-      const available = geometryAvailable();
-      ui.geoEmpty.hidden = available;
-      ui.canvas.hidden = !available;
-      ui.geoCaption.hidden = !available;
-      if (!available) return;
-      const { ctx: g, width, height } = fitCanvas(ui.canvas);
-      if (width <= 1 || height <= 1) return;
-      view.resize(width, height);
-      const colors = themeColors();
-      g.fillStyle = colors.bg;
-      g.fillRect(0, 0, width, height);
-      drawGrid(g, view, colors, { grid: true, labels: true });
-      if (!numeric.valid) {
-        ui.geoCaption.textContent = 'Enter valid numbers to see the transformation.';
-        return;
+    function newId() {
+      const ids = new Set(state.lines.map((l) => l.id));
+      let n = state.lines.length;
+      let id;
+      do {
+        n += 1;
+        id = `l${n}`;
+      } while (ids.has(id));
+      return id;
+    }
+
+    function insertLine(line, afterId = null, { focus = true } = {}) {
+      if (state.lines.length >= MAX_LINES) {
+        ctx.notify(`A sheet can have up to ${MAX_LINES} lines. Delete one to add another.`);
+        return null;
       }
-      const M = state.mode === 'mv' ? numeric.A : numeric.C;
-      const map = (T, x, y) => view.toScreen(T[0][0] * x + T[0][1] * y, T[1][0] * x + T[1][1] * y);
-      const polygon = (T, color, fill, dash) => {
-        g.beginPath();
-        [
-          [0, 0],
-          [1, 0],
-          [1, 1],
-          [0, 1],
-        ].forEach(([x, y], k) => {
-          const [sx, sy] = map(T, x, y);
-          if (k === 0) g.moveTo(sx, sy);
-          else g.lineTo(sx, sy);
+      const made = { id: newId(), ...line };
+      const at = afterId === null ? state.lines.length : indexOf(afterId) + 1;
+      state.lines.splice(at, 0, made);
+      rebuild();
+      evaluate();
+      ctx.save();
+      if (focus) focusLine(made.id);
+      return made;
+    }
+
+    function removeLine(id) {
+      const index = indexOf(id);
+      if (index < 0) return;
+      state.lines.splice(index, 1);
+      if (state.lines.length === 0) state.lines.push({ id: 'l1', kind: 'expr', text: '' });
+      rebuild();
+      evaluate();
+      ctx.save();
+      focusLine(state.lines[Math.max(0, index - 1)].id);
+    }
+
+    function replaceLine(id, line) {
+      const index = indexOf(id);
+      if (index < 0) return;
+      state.lines[index] = { id, ...line };
+      rebuild();
+      evaluate();
+      ctx.save();
+      focusLine(id);
+    }
+
+    function focusLine(id) {
+      const refs = lineEls.get(id);
+      if (!refs) return;
+      if (refs.field) refs.field.focus();
+      else refs.cells[0]?.[0]?.focus();
+    }
+
+    const matrixLine = (name, rows, cols) => ({ kind: 'matrix', name, cells: zeroCells(rows, cols) });
+
+    function resize(line, rows, cols) {
+      const r = clamp(rows, 1, MAX_DIM);
+      const c = clamp(cols, 1, MAX_DIM);
+      line.cells = Array.from({ length: r }, (_, i) => Array.from({ length: c }, (_, j) => line.cells[i]?.[j] ?? '0'));
+      rebuild();
+      evaluate();
+      ctx.save();
+    }
+
+    /* --------------------------------------------------------------- lines */
+
+    function buildMatrix(line, index) {
+      const rows = line.cells.length;
+      const cols = line.cells[0].length;
+      const label = line.name || `Matrix ${index + 1}`;
+      const refs = { cells: [] };
+
+      const name = h('input', {
+        class: 'input input-mono mx-name',
+        type: 'text',
+        value: line.name,
+        placeholder: 'Name',
+        spellcheck: 'false',
+        autocomplete: 'off',
+        maxlength: '16',
+        'aria-label': `Name of matrix ${index + 1}`,
+        oninput: () => {
+          const text = name.value.trim();
+          line.name = NAME_PATTERN.test(text) ? text : '';
+          name.setAttribute('aria-invalid', text !== '' && line.name === '' ? 'true' : 'false');
+          ctx.save();
+          evaluateLater();
+        },
+      });
+      const size = (key, value, text) =>
+        h('input', {
+          class: 'input mx-size',
+          type: 'number',
+          min: '1',
+          max: String(MAX_DIM),
+          step: '1',
+          inputmode: 'numeric',
+          value: String(value),
+          'aria-label': `${label}, number of ${text}`,
+          onchange: () => {
+            const n = Math.round(Number(refs[key].value));
+            if (!Number.isFinite(n)) {
+              refs[key].value = String(value);
+              return;
+            }
+            resize(line, key === 'rows' ? n : rows, key === 'cols' ? n : cols);
+          },
         });
-        g.closePath();
-        if (fill) {
-          g.save();
-          g.globalAlpha = 0.18;
-          g.fillStyle = color;
-          g.fill();
-          g.restore();
+      refs.rows = size('rows', rows, 'rows');
+      refs.cols = size('cols', cols, 'columns');
+
+      const move = (i, j) => refs.cells[i]?.[j]?.focus();
+      const grid = h('div', {
+        class: 'mx-grid',
+        role: 'group',
+        'aria-label': `${label}, ${rows} by ${cols}`,
+      });
+      grid.style.setProperty('--cols', String(cols));
+      for (let i = 0; i < rows; i += 1) {
+        refs.cells.push([]);
+        for (let j = 0; j < cols; j += 1) {
+          const input = h('input', {
+            class: 'input input-mono mx-cell',
+            type: 'text',
+            value: line.cells[i][j],
+            spellcheck: 'false',
+            autocomplete: 'off',
+            maxlength: String(MAX_CELL),
+            'aria-label': `${label}, row ${i + 1}, column ${j + 1}`,
+            oninput: () => {
+              line.cells[i][j] = input.value.slice(0, MAX_CELL);
+              ctx.save();
+              evaluateLater();
+            },
+            onfocus: () => input.select(),
+            onkeydown: (event) => {
+              const atStart = input.selectionStart === 0 && input.selectionEnd === 0;
+              const atEnd = input.selectionStart === input.value.length && input.selectionEnd === input.value.length;
+              if (event.key === 'Enter' || event.key === 'ArrowDown') {
+                event.preventDefault();
+                if (i + 1 < rows) move(i + 1, j);
+                else if (event.key === 'Enter' && j + 1 < cols) move(0, j + 1);
+              } else if (event.key === 'ArrowUp' && i > 0) {
+                event.preventDefault();
+                move(i - 1, j);
+              } else if (event.key === 'ArrowRight' && atEnd && j + 1 < cols) {
+                event.preventDefault();
+                move(i, j + 1);
+              } else if (event.key === 'ArrowLeft' && atStart && j > 0) {
+                event.preventDefault();
+                move(i, j - 1);
+              }
+            },
+          });
+          refs.cells[i].push(input);
+          grid.append(input);
         }
-        g.setLineDash(dash ?? []);
-        g.strokeStyle = color;
-        g.lineWidth = 2;
-        g.stroke();
-        g.setLineDash([]);
+      }
+
+      const fill = (kind) => {
+        line.cells = line.cells.map((row, i) => row.map((_, j) => (kind === 'identity' && i === j ? '1' : '0')));
+        rebuild();
+        evaluate();
+        ctx.save();
       };
+      const more = h(
+        'button',
+        {
+          class: 'btn btn-quiet btn-icon',
+          type: 'button',
+          'aria-label': `More options, ${label}`,
+          'aria-haspopup': 'menu',
+          title: 'More',
+          onclick: (event) =>
+            openMenu(
+              event.currentTarget,
+              [
+                { label: 'Fill with the identity', onSelect: () => fill('identity') },
+                { label: 'Fill with zeros', onSelect: () => fill('zeros') },
+                { separator: true },
+                { label: 'Delete', icon: 'trash', onSelect: () => removeLine(line.id) },
+              ],
+              { align: 'end' },
+            ),
+        },
+        icon('settings', 16),
+      );
 
-      g.save();
-      g.globalAlpha = 0.45;
-      g.strokeStyle = colors.accent;
-      g.lineWidth = 1;
-      g.beginPath();
-      const N = 14;
-      for (let k = -N; k <= N; k += 1) {
-        const [ax, ay] = map(M, k, -N);
-        const [bx, by] = map(M, k, N);
-        const [cx, cy] = map(M, -N, k);
-        const [dx, dy] = map(M, N, k);
-        g.moveTo(ax, ay);
-        g.lineTo(bx, by);
-        g.moveTo(cx, cy);
-        g.lineTo(dx, dy);
-      }
-      g.stroke();
-      g.restore();
-
-      if (state.mode === 'mm') polygon(numeric.B, colors.c, false, [5, 4]);
-      polygon(M, colors.accent, true);
-
-      const [ox, oy] = view.toScreen(0, 0);
-      const e1 = map(M, 1, 0);
-      const e2 = map(M, 0, 1);
-      drawArrow(g, ox, oy, e1[0], e1[1], { color: colors.a, width: 2.5 });
-      drawArrow(g, ox, oy, e2[0], e2[1], { color: colors.b, width: 2.5 });
-      g.font = '600 12px ui-sans-serif, system-ui, sans-serif';
-      g.textBaseline = 'middle';
-      g.fillStyle = colors.a;
-      g.fillText('e\u2081\u2032', e1[0] + 8, e1[1] - 8);
-      g.fillStyle = colors.b;
-      g.fillText('e\u2082\u2032', e2[0] + 8, e2[1] - 8);
-
-      if (state.mode === 'mv') {
-        const [vx, vy] = [numeric.B[0][0], numeric.B[1][0]];
-        const [px, py] = view.toScreen(vx, vy);
-        const [tx, ty] = map(M, vx, vy);
-        drawArrow(g, ox, oy, px, py, { color: colors.text, width: 2, dash: [5, 4] });
-        drawArrow(g, ox, oy, tx, ty, { color: colors.ink, width: 3 });
-        g.fillStyle = colors.ink;
-        g.fillText('Ax', tx + 10, ty - 10);
-        g.fillStyle = colors.text;
-        g.fillText('x', px + 10, py + 12);
-        g.beginPath();
-        g.arc(px, py, 5.5, 0, Math.PI * 2);
-        g.fillStyle = colors.bg;
-        g.fill();
-        g.strokeStyle = colors.ink;
-        g.lineWidth = 2;
-        g.stroke();
-      }
-
-      const det = det2(M);
-      const nature =
-        Math.abs(det) < 1e-9
-          ? 'The map collapses the plane onto a line or point.'
-          : det < 0
-            ? 'Areas scale by |det| and orientation flips.'
-            : 'Areas scale by det and orientation is kept.';
-      ui.geoCaption.textContent = `${state.mode === 'mv' ? 'det A' : 'det AB'} = ${formatNumber(det)}. ${nature}`;
+      refs.note = h('p', { class: 'mx-error', role: 'alert', hidden: true });
+      const li = h(
+        'li',
+        { class: 'mx-line mx-matrix', dataset: { id: line.id } },
+        h(
+          'div',
+          { class: 'mx-head' },
+          name,
+          h('span', { class: 'mx-eq', 'aria-hidden': 'true' }, '='),
+          h('span', { class: 'mx-dims' }, refs.rows, h('span', { 'aria-hidden': 'true' }, '\u00d7'), refs.cols),
+          h('span', { class: 'mx-spacer' }),
+          more,
+        ),
+        grid,
+        refs.note,
+      );
+      refs.li = li;
+      return { li, refs };
     }
 
-    /* -------------------------------------------------------------- assemble */
-
-    const mCtl = stepper('m', 'A rows');
-    const nCtl = stepper('n', 'A columns');
-    const pCtl = stepper('p', 'B columns');
-    ui.mOut = mCtl.out;
-    ui.nOut = nCtl.out;
-    ui.pOut = pCtl.out;
-    ui.nLabel = nCtl.labelEl;
-    ui.pCtl = pCtl.el;
-
-    ui.modeButtons = [
-      h(
+    function buildExpr(line, index) {
+      const refs = {};
+      const field = createMathField({
+        value: line.text,
+        label: `Calculation ${index + 1}`,
+        placeholder: 'Type a calculation, like A*B, or matrix',
+        maxlength: MAX_TEXT,
+        oninput: (text) => {
+          const shortcut = SHORTCUT.exec(text);
+          if (shortcut) {
+            const vector = shortcut[2] === 'vector';
+            const name = shortcut[1] ?? nextName(vector ? 'uvwxyz' : 'ABCDEFGHIJKLMNOPQRSTUVWXYZ');
+            replaceLine(line.id, matrixLine(NAME_PATTERN.test(name) ? name : '', vector ? 3 : 2, vector ? 1 : 2));
+            return;
+          }
+          line.text = text.replace(/[\r\n]+/g, ' ').slice(0, MAX_TEXT);
+          ctx.save();
+          evaluateLater();
+        },
+        onblur: () => evaluateLater.flush(),
+        onkeydown: (event) => {
+          if (event.key === 'Enter') {
+            event.preventDefault();
+            evaluateLater.flush();
+            insertLine({ kind: 'expr', text: '' }, line.id);
+          } else if (event.key === 'Backspace' && line.text === '' && state.lines.length > 1) {
+            event.preventDefault();
+            removeLine(line.id);
+          } else if (event.key === 'ArrowUp' && index > 0) {
+            event.preventDefault();
+            focusLine(state.lines[index - 1].id);
+          } else if (event.key === 'ArrowDown' && state.lines[index + 1]) {
+            event.preventDefault();
+            focusLine(state.lines[index + 1].id);
+          }
+        },
+      });
+      fields.set(line.id, field);
+      refs.field = field;
+      refs.result = h('div', { class: 'mx-result', 'aria-live': 'polite', hidden: true });
+      const remove = h(
         'button',
-        { class: 'segment', type: 'button', role: 'radio', dataset: { mode: 'mm' }, onclick: () => setMode('mm') },
-        'Matrix \u00d7 matrix',
-      ),
+        {
+          class: 'btn btn-quiet btn-icon mx-remove',
+          type: 'button',
+          'aria-label': `Delete calculation ${index + 1}`,
+          title: 'Delete line',
+          onclick: () => removeLine(line.id),
+        },
+        icon('close', 14),
+      );
+      const li = h(
+        'li',
+        { class: 'mx-line mx-expr', dataset: { id: line.id } },
+        h('div', { class: 'mx-expr-row' }, field.el, remove),
+        refs.result,
+      );
+      refs.li = li;
+      return { li, refs };
+    }
+
+    function rebuild() {
+      lineEls.clear();
+      fields.clear();
+      const items = state.lines.map((line, index) => {
+        const built = line.kind === 'matrix' ? buildMatrix(line, index) : buildExpr(line, index);
+        lineEls.set(line.id, built.refs);
+        return built.li;
+      });
+      list.replaceChildren(...items);
+    }
+
+    /* --------------------------------------------------------------- layout */
+
+    const add = (label, onclick) => h('button', { class: 'btn', type: 'button', onclick }, icon('plus', 16), label);
+
+    const help = h(
+      'details',
+      { class: 'mx-help' },
+      h('summary', {}, 'What you can type'),
       h(
-        'button',
-        { class: 'segment', type: 'button', role: 'radio', dataset: { mode: 'mv' }, onclick: () => setMode('mv') },
-        'Matrix \u00d7 vector',
+        'div',
+        { class: 'mx-help-body' },
+        h(
+          'p',
+          {},
+          'Type matrix or vector on a line, or use the buttons, to get a grid. Set its size beside the name. Entries can be numbers like 3, -1/2, 0.25, or sqrt(2).',
+        ),
+        h(
+          'p',
+          {},
+          'Then calculate with the names you defined. Later lines can use earlier results: write C = A*B to keep one.',
+        ),
+        h(
+          'ul',
+          {},
+          ...[
+            ['A+B, A-B, A*B, 2A, A/2', 'sums, products, and scalar multiples'],
+            ['A^2, A^-1, A^T', 'powers, inverse, transpose (A\u2019 also works)'],
+            ['det(A), tr(A), rank(A), rref(A), inv(A)', 'determinant, trace, rank, reduced row echelon form'],
+            ['solve(A, b)', 'the solution x of Ax = b'],
+            ['dot(u, v), cross(u, v), norm(v)', 'for vectors'],
+            ['[[1, 2], [3, 4]]  and  [1, 2, 3]', 'a matrix, and a column vector, written inline'],
+            ['identity(3), zeros(2, 3), diag(1, 2, 3)', 'common matrices'],
+          ].map(([code, text]) => h('li', {}, h('code', {}, code), ' \u2014 ', text)),
+        ),
+        h(
+          'p',
+          {},
+          'Fractions stay exact. Anything that is not rational, like sqrt(2) or \u03c0, is calculated as a decimal.',
+        ),
       ),
-    ];
-    const presetsButton = h(
-      'button',
-      {
-        class: 'btn',
-        type: 'button',
-        'aria-haspopup': 'menu',
-        onclick: () =>
-          openMenu(presetsButton, [
-            ...PRESETS.map((preset) => ({ label: preset.label, onSelect: () => applyPreset(preset) })),
-            { separator: true },
-            { label: 'Randomize', icon: 'reset', onSelect: randomize },
-          ]),
-      },
-      'Examples for A',
     );
-    ui.playButton = h('button', { class: 'btn', type: 'button', 'aria-pressed': 'false', onclick: togglePlay });
-    ui.equationHost = h('div', { class: 'mx-equation-host' });
-    ui.explain = h('div', { class: 'mx-explain', 'aria-live': 'polite' });
-    ui.columns = h('div', { class: 'mx-columns' });
-    ui.canvas = h('canvas', {
-      class: 'plot-canvas mx-canvas',
-      role: 'img',
-      'aria-label': 'Geometric view of the transformation. Drag to pan, scroll to zoom.',
-    });
-    ui.geoEmpty = h(
-      'p',
-      { class: 'tool-note mx-geo-empty' },
-      'The geometric view appears when the matrices are 2 \u00d7 2 (and, for products with a vector, when x has two entries).',
-    );
-    ui.geoCaption = h('p', { class: 'mx-geo-caption' });
 
     root.classList.add('tool', 'matrix-tool');
     root.append(
       h(
         'div',
-        { class: 'tool-bar' },
-        h('div', { class: 'segmented', role: 'radiogroup', 'aria-label': 'Operation' }, ui.modeButtons),
-        mCtl.el,
-        nCtl.el,
-        pCtl.el,
-        presetsButton,
+        { class: 'tool-bar mx-bar', role: 'toolbar', 'aria-label': 'Add to the sheet' },
+        add('Matrix', () => insertLine(matrixLine(nextName('ABCDEFGHIJKLMNOPQRSTUVWXYZ'), 2, 2))),
+        add('Vector', () => insertLine(matrixLine(nextName('uvwxyz'), 3, 1))),
+        add('Calculation', () => insertLine({ kind: 'expr', text: '' })),
       ),
-      h(
-        'div',
-        { class: 'tool-body mx-body' },
-        h(
-          'section',
-          { class: 'mx-main', 'aria-label': 'Product' },
-          ui.equationHost,
-          h('div', { class: 'mx-explain-wrap' }, ui.explain, ui.playButton),
-          ui.columns,
-        ),
-        h(
-          'section',
-          { class: 'mx-geo', 'aria-label': 'Geometry' },
-          h('div', { class: 'mx-canvas-wrap' }, ui.canvas, ui.geoEmpty),
-          ui.geoCaption,
-        ),
-      ),
+      h('div', { class: 'tool-body mx-body' }, list, help),
     );
 
-    const detach = attachPanZoom(ui.canvas, view, {
-      onChange: () => {
-        state.view = view.toJSON();
-        drawGeometry();
-        ctx.save();
-      },
-      onReset: () => {
-        view.set(DEFAULT_VIEW);
-        state.view = view.toJSON();
-        drawGeometry();
-        ctx.save();
-      },
-      onHover: (x, y) => {
-        ui.canvas.style.cursor = dragHandler.hitTest(x, y) ? 'grab' : '';
-      },
-      drag: dragHandler,
-    });
-    const stopObserving = onResize(ui.canvas, () => drawGeometry());
-    const onTheme = () => drawGeometry();
-    document.addEventListener('clover:themechange', onTheme);
-
-    stopPlaying();
-    build();
+    rebuild();
+    evaluate();
 
     return {
-      onShow: () => drawGeometry(),
-      onHide: () => stopPlaying(),
+      onShow: () => {},
       destroy: () => {
-        stopPlaying();
-        detach();
-        stopObserving();
-        document.removeEventListener('clover:themechange', onTheme);
+        evaluateLater.cancel();
+        for (const field of fields.values()) field.destroy?.();
       },
     };
   },

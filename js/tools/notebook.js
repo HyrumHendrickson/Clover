@@ -1,19 +1,23 @@
 import { h, onResize, uid } from '../core/dom.js';
 import { createExprList, emptyRow, normalizeRows } from '../core/exprlist.js';
 import { icon } from '../core/icons.js';
+import { openMenu } from '../core/menu.js';
 import { renderGraph, rowColor } from '../lib/graph/draw.js';
 import { GraphModel } from '../lib/graph/model.js';
 import { GraphView, normalizeGraphView } from '../lib/graph/view.js';
 import { attachPanZoom } from '../lib/interact.js';
 import { MAX_MARKDOWN, renderMarkdown } from '../lib/markdown.js';
 import { fitCanvas, themeColors } from '../lib/viewport.js';
+import { embeddableTools, getTool } from './registry.js';
 
 const MAX_CELLS = 60;
 const MAX_GRAPHS = 10;
 const MAX_GRAPH_ROWS = 24;
 const ID_PATTERN = /^[A-Za-z0-9_-]{1,24}$/;
 const DEFAULT_VIEW = { cx: 0, cy: 0, xspan: 20, yspan: 0 };
-const KINDS = new Set(['text', 'math', 'graph']);
+const MAX_EMBEDS = 8;
+const EMBED_HEIGHT = { min: 220, max: 1000, initial: 460 };
+const KINDS = new Set(['text', 'math', 'graph', 'embed']);
 /** Row kinds that draw something, as opposed to defining or computing a value. */
 const PLOTTED = new Set(['explicit', 'explicitX', 'implicit', 'ineq', 'polar', 'param']);
 
@@ -22,6 +26,10 @@ const PLOTTED = new Set(['explicit', 'explicitX', 'implicit', 'ineq', 'polar', '
 function normalizeCell(raw, taken, counts) {
   if (!raw || typeof raw !== 'object' || !KINDS.has(raw.type)) return null;
   if (raw.type === 'graph' && counts.graph >= MAX_GRAPHS) return null;
+  if (raw.type === 'embed') {
+    const tool = getTool(raw.tool);
+    if (!tool || tool.type === 'notebook' || counts.embed >= MAX_EMBEDS) return null;
+  }
   const id =
     typeof raw.id === 'string' && ID_PATTERN.test(raw.id) && !taken.has(raw.id)
       ? raw.id
@@ -30,6 +38,17 @@ function normalizeCell(raw, taken, counts) {
   counts.n += 1;
   if (raw.type === 'text') {
     return { id, type: 'text', text: typeof raw.text === 'string' ? raw.text.slice(0, MAX_MARKDOWN) : '' };
+  }
+  if (raw.type === 'embed') {
+    const tool = getTool(raw.tool);
+    counts.embed += 1;
+    return {
+      id,
+      type: 'embed',
+      tool: tool.type,
+      height: clampEmbedHeight(raw.height),
+      state: tool.normalize(raw.state ?? {}),
+    };
   }
   const rowTaken = counts.rows;
   if (raw.type === 'math') {
@@ -46,6 +65,12 @@ function normalizeCell(raw, taken, counts) {
     view: normalizeGraphView(raw.view, DEFAULT_VIEW),
     grid: raw.grid !== false,
   };
+}
+
+function clampEmbedHeight(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return EMBED_HEIGHT.initial;
+  return Math.min(EMBED_HEIGHT.max, Math.max(EMBED_HEIGHT.min, Math.round(n)));
 }
 
 function freshRowId(taken) {
@@ -71,19 +96,29 @@ const starter = () => [
 
 function normalize(raw) {
   const taken = new Set();
-  const counts = { n: 0, graph: 0, rows: new Set() };
+  const counts = { n: 0, graph: 0, embed: 0, rows: new Set() };
   const entries = Array.isArray(raw?.cells) ? raw.cells.slice(0, MAX_CELLS) : [];
   const cells = entries.map((c) => normalizeCell(c, taken, counts)).filter(Boolean);
   if (cells.length === 0) {
     taken.clear();
     counts.rows.clear();
     counts.graph = 0;
+    counts.embed = 0;
     for (const c of starter()) cells.push(normalizeCell(c, taken, counts));
   }
   return { cells, angle: raw?.angle === 'deg' ? 'deg' : 'rad' };
 }
 
 const isDark = () => document.documentElement.dataset.theme === 'dark';
+
+const kindLabel = (cell) =>
+  cell.type === 'text'
+    ? 'Text'
+    : cell.type === 'math'
+      ? 'Math'
+      : cell.type === 'embed'
+        ? (getTool(cell.tool)?.name ?? 'Tool')
+        : 'Graph';
 
 const cellRows = (cell) => (cell.type === 'math' ? [cell.row] : cell.type === 'graph' ? cell.rows : []);
 
@@ -92,7 +127,8 @@ const cellRows = (cell) => (cell.type === 'math' ? [cell.row] : cell.type === 'g
 export default {
   type: 'notebook',
   name: 'Notebook',
-  description: 'Mix notes, calculations, and graphs in one document. Definitions are shared by every cell.',
+  description:
+    'Mix notes, calculations, graphs, and any other tool in one document. Definitions are shared by every math and graph cell.',
   defaultState: () => normalize({}),
   normalize,
 
@@ -138,6 +174,8 @@ export default {
     const renderErrors = new Map();
     /** @type {Map<string, { el: HTMLElement, destroy(): void, render(fast: boolean): void, syncAll(): void, focus(): void, pause(): void, resume(): void }>} */
     let instances = new Map();
+    /** Mounted tools inside embed cells. They outlive a rebuild so reordering does not reset them. */
+    const embedHosts = new Map();
 
     const container = h('div', { class: 'nb-cells' });
 
@@ -179,7 +217,7 @@ export default {
 
     const indexOf = (id) => state.cells.findIndex((c) => c.id === id);
 
-    function insertCell(type, afterId = null, { focus = true } = {}) {
+    function insertCell(type, afterId = null, { focus = true, tool = null } = {}) {
       if (state.cells.length >= MAX_CELLS) {
         ctx.notify(`A notebook can have up to ${MAX_CELLS} cells. Delete one to add another.`);
         return null;
@@ -187,6 +225,13 @@ export default {
       if (type === 'graph' && state.cells.filter((c) => c.type === 'graph').length >= MAX_GRAPHS) {
         ctx.notify(`A notebook can have up to ${MAX_GRAPHS} graphs. Delete one to add another.`);
         return null;
+      }
+      if (type === 'embed') {
+        if (!getTool(tool) || tool === 'notebook') return null;
+        if (state.cells.filter((c) => c.type === 'embed').length >= MAX_EMBEDS) {
+          ctx.notify(`A notebook can embed up to ${MAX_EMBEDS} tools. Delete one to add another.`);
+          return null;
+        }
       }
       const taken = new Set(allRows().map((r) => r.id));
       const rowId = () => freshRowId(taken);
@@ -196,7 +241,15 @@ export default {
           ? { id, type, text: '' }
           : type === 'math'
             ? { id, type, row: emptyRow(rowId(), state.cells.length % 6) }
-            : { id, type, rows: [emptyRow(rowId(), state.cells.length % 6)], view: { ...DEFAULT_VIEW }, grid: true };
+            : type === 'embed'
+              ? {
+                  id,
+                  type,
+                  tool,
+                  height: EMBED_HEIGHT.initial,
+                  state: getTool(tool).normalize(getTool(tool).defaultState()),
+                }
+              : { id, type, rows: [emptyRow(rowId(), state.cells.length % 6)], view: { ...DEFAULT_VIEW }, grid: true };
       const at = afterId === null ? state.cells.length : indexOf(afterId) + 1;
       state.cells.splice(at, 0, cell);
       rebuildCells();
@@ -255,7 +308,7 @@ export default {
         h(
           'div',
           { class: 'nb-bar' },
-          h('span', { class: 'nb-kind' }, cell.type === 'text' ? 'Text' : cell.type === 'math' ? 'Math' : 'Graph'),
+          h('span', { class: 'nb-kind' }, kindLabel(cell)),
           h(
             'span',
             { class: 'nb-actions' },
@@ -523,11 +576,76 @@ export default {
       };
     }
 
+    function buildEmbed(cell, label) {
+      const tool = getTool(cell.tool);
+      let entry = embedHosts.get(cell.id);
+      if (!entry) {
+        const host = h('div', {
+          class: 'nb-embed-host',
+          tabindex: -1,
+          style: { height: `${cell.height}px` },
+        });
+        const embedded = {
+          state: cell.state,
+          save: () => ctx.save(),
+          notify: (message, kind) => ctx.notify(message, kind),
+          title: () => `${ctx.title()} \u00b7 ${tool.name}`,
+          embedded: true,
+        };
+        let instance = {};
+        try {
+          instance = tool.mount(host, embedded) ?? {};
+        } catch (error) {
+          console.error(`Could not open ${tool.type} in a notebook`, error);
+          host.replaceChildren(
+            h(
+              'p',
+              { class: 'nb-embed-error', role: 'alert' },
+              `The ${tool.name.toLowerCase()} could not be opened. Delete this cell and add it again.`,
+            ),
+          );
+        }
+        entry = { host, instance };
+        embedHosts.set(cell.id, entry);
+        if (active) instance.onShow?.();
+        const height = () => {
+          const px = Math.round(host.getBoundingClientRect().height);
+          if (active && px >= EMBED_HEIGHT.min && Math.abs(px - cell.height) > 3) {
+            cell.height = clampEmbedHeight(px);
+            ctx.save();
+          }
+        };
+        entry.stopResize = onResize(host, height);
+      }
+      entry.host.style.height = `${cell.height}px`;
+      return {
+        el: cellChrome(cell, label, h('div', { class: 'nb-body nb-embed-body' }, entry.host)),
+        destroy() {},
+        render() {},
+        syncAll() {},
+        pause: () => entry.instance.onHide?.(),
+        resume: () => entry.instance.onShow?.(),
+        focus: () => entry.host.focus({ preventScroll: false }),
+      };
+    }
+
     function buildCell(cell, index) {
-      const label = `${cell.type === 'text' ? 'Text' : cell.type === 'math' ? 'Math' : 'Graph'} cell ${index + 1}`;
+      const label = `${kindLabel(cell)} cell ${index + 1}`;
       if (cell.type === 'text') return buildText(cell, label);
       if (cell.type === 'math') return buildMath(cell, label);
+      if (cell.type === 'embed') return buildEmbed(cell, label);
       return buildGraph(cell, label);
+    }
+
+    function embedMenu(anchor, afterId) {
+      openMenu(
+        anchor,
+        embeddableTools().map((tool) => ({
+          label: tool.name,
+          icon: `tool-${tool.type}`,
+          onSelect: () => insertCell('embed', afterId, { tool: tool.type }),
+        })),
+      );
     }
 
     const insertBar = (afterId) =>
@@ -542,6 +660,17 @@ export default {
             type === 'text' ? 'Text' : type === 'math' ? 'Math' : 'Graph',
           ),
         ),
+        h(
+          'button',
+          {
+            class: 'btn btn-quiet btn-small',
+            type: 'button',
+            'aria-haspopup': 'menu',
+            onclick: (event) => embedMenu(event.currentTarget, afterId),
+          },
+          icon('plus', 12),
+          'Tool',
+        ),
       );
 
     function rebuildCells() {
@@ -553,6 +682,18 @@ export default {
         instances.set(cell.id, instance);
         container.append(instance.el, insertBar(cell.id));
       });
+      const live = new Set(state.cells.map((c) => c.id));
+      for (const [id, entry] of embedHosts) {
+        if (live.has(id)) continue;
+        closeEmbed(entry);
+        embedHosts.delete(id);
+      }
+    }
+
+    function closeEmbed(entry) {
+      entry.stopResize?.();
+      entry.instance.onHide?.();
+      entry.instance.destroy?.();
     }
 
     /* -------------------------------------------------------------- layout */
@@ -584,6 +725,17 @@ export default {
           icon('plus', 14),
           type === 'text' ? 'Text' : type === 'math' ? 'Math' : 'Graph',
         ),
+      ),
+      h(
+        'button',
+        {
+          class: 'btn btn-small',
+          type: 'button',
+          'aria-haspopup': 'menu',
+          onclick: (event) => embedMenu(event.currentTarget, null),
+        },
+        icon('plus', 14),
+        'Embed a tool',
       ),
       h('span', { class: 'nb-spacer' }),
       h('label', { class: 'field' }, h('span', { class: 'field-label' }, 'Angles'), angle),
@@ -617,6 +769,8 @@ export default {
         cancelAnimationFrame(frame);
         clearTimeout(settleTimer);
         for (const instance of instances.values()) instance.destroy();
+        for (const entry of embedHosts.values()) closeEmbed(entry);
+        embedHosts.clear();
         stopObserving();
         document.removeEventListener('clover:themechange', onTheme);
       },

@@ -70,4 +70,12 @@ Parameter limits default to 0 to 2π and come from a restriction or the boxes un
 
 ## Notebook
 
-The notebook tab is a column of text, math, and graph cells. Definitions and sliders are shared by every cell. Text cells accept `#` headings, lists, `**bold**`, `*italic*`, `` `code` ``, and `$math$`.
+The notebook tab is a column of text, math, and graph cells, and any other tool can be embedded in a cell with **Embed a tool**; embedded tools keep their own state and do not share definitions. Definitions and sliders are shared by every cell. Text cells accept `#` headings, lists, `**bold**`, `*italic*`, `` `code` ``, and `$math$`.
+
+## Typing math
+
+Math fields show typeset math as you type. `^` opens an exponent, `/` a fraction, and brackets close themselves. Typing `sum`, `prod`, or `int` produces ∑, ∏, or ∫ with empty boxes for the limits. Write the arguments inside brackets as `∑(k, 1, 10, k^2)`, and press Tab to move from one argument to the next. To add up a list, write `total(L)`, since a typed ∑(L) is drawn as an operator with L as its index.
+
+## Geometry
+
+The Geometry tab takes one definition or claim per line, such as `M = midpoint(A, B)` or `collinear(A, B, C)`. The Help panel in the tab lists every construction. Constructions that need square roots (angle bisectors, the incenter, a general line-circle intersection) are not offered; `second(l, c, Q)` gives the other intersection when one is known. See [the engine notes](../js/lib/geometry/engine.js) for how claims are decided.
