@@ -8,7 +8,7 @@ A browser workspace for visualising mathematics. Open as many tabs as you like, 
 
 | Tool                  | What it does                                                                                                                                                     |
 | --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Desmos**            | Embeds the Desmos graphing, geometry, 3D, scientific, four-function, and matrix calculators. Saves a link to a shared graph.                                     |
+| **Graphing**          | A built-in 2D graphing calculator: functions, equations, inequalities, polar and parametric curves, points and lists, sliders, and click-to-inspect intercepts.  |
 | **Matrices**          | Matrix × matrix and matrix × vector, one dot product at a time. For 2×2 maps it draws the transformed grid, unit square, and basis vectors. Drag the vector tip. |
 | **Complex functions** | Domain colouring of any f(z). Three colourings, pan and zoom, a value probe, and PNG export.                                                                     |
 | **Vector fields**     | Plot F = ⟨P, Q⟩ as arrows, magnitude shading, and animated flow. Click to trace trajectories. Divergence and curl are shown under the cursor.                    |
@@ -21,7 +21,7 @@ A browser workspace for visualising mathematics. Open as many tabs as you like, 
 
 - Work is saved automatically in your browser's local storage. Nothing is sent to a server.
 - **Export** writes the whole workspace or one tab to a `.clover` file. A recipient opens it with **Import** or by dropping it on the page and sees what you saw. See [docs/file-format.md](docs/file-format.md).
-- Desmos does not let other sites read a graph without an API key, so Clover stores the graph's share link instead of its contents.
+- Graphs are saved as their expressions, so a shared file reproduces the whole graph. Files from version 1 that held a Desmos link open as an empty graph with the link kept as a note.
 
 ## Run locally
 
@@ -54,7 +54,7 @@ Shared files are treated as untrusted data. Python runs in a sandboxed iframe wi
 
 ## Third-party software
 
-[Skulpt](https://github.com/skulpt/skulpt) (MIT) is vendored in `vendor/skulpt`. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). Desmos is a trademark of Desmos Studio PBC and is embedded under its own terms of service.
+[Skulpt](https://github.com/skulpt/skulpt) (MIT) is vendored in `vendor/skulpt`. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). The graphing tool is original code. Its input syntax follows Desmos conventions where practical; Clover is not affiliated with Desmos Studio PBC. See [docs/graphing.md](docs/graphing.md) for the full syntax.
 
 ## License
 

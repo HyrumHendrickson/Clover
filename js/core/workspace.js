@@ -5,10 +5,14 @@
  *
  * In memory:   { activeId, tabs: [{ id, type, title, state }] }
  * On disk:     { format: "clover", version, kind: "workspace" | "tab", ... }
+ *
+ * Version history:
+ *   1  first release; the "desmos" tool embedded a Desmos calculator.
+ *   2  the "graph" tool replaces "desmos". Version 1 "desmos" tabs are migrated.
  */
 
 export const FORMAT = 'clover';
-export const VERSION = 1;
+export const VERSION = 2;
 export const MAX_TABS = 24;
 export const MAX_IMPORT_BYTES = 8 * 1024 * 1024;
 export const MAX_TITLE = 60;
@@ -47,12 +51,31 @@ export function cleanTitle(title, fallback) {
   return text || fallback;
 }
 
+const LEGACY_GRAPH_ID = /^[A-Za-z0-9_-]{1,40}$/;
+
+/**
+ * Version 1 tabs of type "desmos" embedded a calculator that Clover could not read.
+ * They become empty graphs; a saved share link is kept as a note so nothing is lost.
+ */
+function migrateLegacyTab(raw) {
+  if (raw.type !== 'desmos') return raw;
+  const id = raw.state && typeof raw.state.graphId === 'string' ? raw.state.graphId : '';
+  const rows = LEGACY_GRAPH_ID.test(id)
+    ? [
+        { kind: 'note', text: `Saved Desmos graph from an earlier version: https://www.desmos.com/calculator/${id}` },
+        { kind: 'expr', text: '' },
+      ]
+    : [];
+  return { type: 'graph', title: raw.title === 'Desmos' ? undefined : raw.title, state: { rows } };
+}
+
 /**
  * @typedef {{ type: string, name: string, normalize: (raw: any) => any }} ToolInfo
  * @param {Record<string, ToolInfo>} tools
  */
-export function normalizeTab(raw, tools, newId) {
-  if (!raw || typeof raw !== 'object') return null;
+export function normalizeTab(input, tools, newId) {
+  if (!input || typeof input !== 'object') return null;
+  const raw = migrateLegacyTab(input);
   const tool = Object.hasOwn(tools, raw.type) ? tools[raw.type] : null;
   if (!tool) return null;
   const state = tool.normalize(sanitizeJson(raw.state ?? {}));

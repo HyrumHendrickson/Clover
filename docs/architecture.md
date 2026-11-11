@@ -7,7 +7,7 @@ index.html ── js/main.js ── core/app.js (App)
                               ├─ core/workspace.js   pure model, import/export validation
                               ├─ core/store.js       localStorage
                               ├─ core/menu|dialog|toast.js
-                              └─ tools/index.js ── desmos | matrix | complex | vectorfield | python
+                              └─ tools/index.js ── graph | matrix | complex | vectorfield | python
                                                     └─ lib/ expr, complexmath, viewport, domain, field, ...
 python tool ── postMessage ── runner/index.html (sandboxed iframe) ── vendor/skulpt
 ```
@@ -23,6 +23,17 @@ python tool ── postMessage ── runner/index.html (sandboxed iframe) ─�
 ## Plots
 
 `lib/viewport.js` defines `View` (centre and radius, device independent) and grid drawing. `lib/interact.js` adds pan, zoom, pinch, and keyboard control. Domain colouring renders progressively: a coarse pass for responsiveness, then a full pass in time-sliced bands.
+
+## Graphing
+
+`lib/graph/` is a small language and rendering engine, pure and unit tested without a canvas:
+
+- `parse.js` and `compile.js` turn a typed line into an AST, then into closures over a slot array. Names are single letters, so `xy` is `x * y`; `names.js` lists the reserved words.
+- `model.js` decides what each row means (curve, region, definition, slider, value), orders definitions by dependency, and reports circular or duplicate ones. Slider changes mutate a value cell, so plots redraw without recompiling.
+- `sample.js` turns plots into pixel geometry: adaptive sampling that breaks at asymptotes and steps, refined parametric sampling, marching squares for implicit curves with a pole filter, and raster fill for inequalities. `draw.js` strokes it and returns geometry for hit testing.
+- `analysis.js` finds intercepts, extrema, and intersections of explicit functions. `view.js` is a viewport whose axes scale independently.
+
+While you pan, zoom, or drag a slider the tool renders at reduced quality, then redraws in full once input settles.
 
 ## Python
 

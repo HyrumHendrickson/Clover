@@ -6,7 +6,7 @@ body:
     id: tool
     attributes:
       label: Tool
-      options: [Desmos, Matrices, Complex functions, Vector fields, Python turtle, Tabs / import / export, Other]
+      options: [Graphing, Matrices, Complex functions, Vector fields, Python turtle, Tabs / import / export, Other]
     validations:
       required: true
   - type: textarea

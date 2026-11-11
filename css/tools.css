@@ -97,14 +97,259 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* ------------------------------------------------------------------- desmos */
+/* -------------------------------------------------------------------- graph */
 
-.desmos-frame {
+.graph-tool {
+  gap: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+.graph-layout {
+  display: grid;
+  flex: 1;
+  grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
+  min-height: 0;
+}
+
+.gr-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: auto;
+  border-right: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.gr-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.gr-row {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) auto;
+  align-items: start;
+  padding: 8px 6px 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.gr-row.is-current {
+  background: var(--surface-2);
+}
+
+.gr-row.is-selected {
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.gr-dot {
+  display: block;
+  width: 26px;
+  height: 26px;
+  margin: 5px 0 0 12px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--row-color, var(--accent));
+  cursor: pointer;
+}
+
+.gr-dot:disabled {
+  background: var(--surface-3);
+  cursor: default;
+}
+
+.gr-dot.is-off {
+  background: transparent;
+  box-shadow: inset 0 0 0 2px var(--row-color, var(--accent));
+}
+
+.gr-dot-note {
+  display: grid;
+  place-items: center;
+  background: var(--surface-3);
+  color: var(--text-muted);
+  font-size: 12px;
+  cursor: default;
+}
+
+.gr-body {
+  min-width: 0;
+}
+
+.gr-input {
   width: 100%;
-  height: 100%;
+  min-height: 36px;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text);
+  font: 15px var(--font-mono);
+}
+
+.gr-input:hover {
+  border-color: var(--border);
+}
+
+.gr-input[aria-invalid='true'] {
+  border-color: var(--danger);
+}
+
+.gr-value,
+.gr-error {
+  margin: 2px 0 0 8px;
+  font-size: 12.5px;
+  line-height: 1.4;
+}
+
+.gr-value {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  overflow-wrap: anywhere;
+}
+
+.gr-error {
+  color: var(--danger);
+}
+
+.gr-slider,
+.gr-domain {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 4px 0 0 8px;
+}
+
+.gr-domain {
+  color: var(--text-muted);
+}
+
+.gr-var {
+  font-style: italic;
+}
+
+.gr-bound {
+  width: 58px;
+  min-height: 28px;
+  padding: 0 6px;
+  font: 12px var(--font-mono);
+}
+
+.gr-range {
+  flex: 1 1 96px;
+  width: auto;
+  min-width: 80px;
+  min-height: 28px;
+}
+
+.gr-play,
+.gr-tool {
+  width: 28px;
+  min-height: 28px;
+}
+
+.gr-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.gr-swatch {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--row-color, var(--accent));
+}
+
+.gr-add-slider {
+  margin: 4px 0 0 8px;
+}
+
+.gr-add {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 12px;
+}
+
+.gr-help {
+  padding: 4px 14px 18px;
+  color: var(--text-muted);
+  font-size: 12.5px;
+}
+
+.gr-help summary {
+  cursor: pointer;
+}
+
+.gr-help dl {
+  margin: 8px 0 0;
+}
+
+.gr-help dt {
+  margin-top: 8px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.gr-help dd {
+  margin: 2px 0 0;
+}
+
+.gr-help code {
+  font: 12px var(--font-mono);
+  overflow-wrap: anywhere;
+}
+
+.gr-stage {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  border: 0;
+  border-radius: 0;
+}
+
+.gr-tools {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  padding: 2px;
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  background: #ffffff;
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+}
+
+.gr-settings {
+  position: absolute;
+  top: 58px;
+  right: 10px;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: min(320px, calc(100% - 20px));
+  padding: 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 18%);
+}
+
+.gr-bounds {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  align-items: end;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.gr-bounds .gr-bound {
+  width: 100%;
+  min-height: 32px;
+  font-size: 13px;
 }
 
 /* ----------------------------------------------------------------- matrices */
@@ -628,7 +873,17 @@
     min-height: 360px;
   }
 
-  .desmos-frame {
-    min-height: 480px;
+  .graph-tool {
+    overflow: hidden;
+  }
+
+  .graph-layout {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(180px, 38%) minmax(320px, 1fr);
+  }
+
+  .gr-panel {
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
   }
 }

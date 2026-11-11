@@ -114,8 +114,8 @@ test('rename, duplicate, reorder, close and undo', () => {
 
 test('tab limit is enforced', () => {
   const extras = [];
-  while (app.tabs.length < 24) extras.push(app.addTab({ type: 'desmos' }, { activate: false }));
-  assert.equal(app.addTab({ type: 'desmos' }), null);
+  while (app.tabs.length < 24) extras.push(app.addTab({ type: 'graph' }, { activate: false }));
+  assert.equal(app.addTab({ type: 'graph' }), null);
   assert.equal(app.tabs.length, 24);
   for (const tab of extras) app.closeTab(tab.id, { undo: false });
   assert.equal(app.tabs.length, 6);
@@ -210,33 +210,6 @@ test('vector field tool validates both components', async () => {
   assert.equal(tab.state.p, 'x');
   assert.equal(tab.state.q, '-y');
   assert.deepEqual(tab.state.seeds, []);
-});
-
-test('desmos tool accepts only desmos.com links', () => {
-  const tab = app.tabs.find((t) => t.type === 'desmos');
-  app.activate(tab.id);
-  const frame = q('iframe');
-  assert.equal(frame.src, 'https://www.desmos.com/calculator');
-  const input = q('input');
-  const open = qa('button').find((b) => b.textContent === 'Open link');
-
-  type(window, input, 'https://www.desmos.com/calculator/abc123xyz?x=1#frag');
-  open.click();
-  assert.equal(frame.src, 'https://www.desmos.com/calculator/abc123xyz');
-  assert.equal(tab.state.graphId, 'abc123xyz');
-
-  for (const bad of [
-    'https://evil.example/calculator/abc',
-    'javascript:alert(1)',
-    'http://www.desmos.com/calculator/abc',
-    'https://www.desmos.com.evil.example/calculator/x',
-    'https://www.desmos.com/other',
-  ]) {
-    type(window, input, bad);
-    open.click();
-    assert.equal(frame.src, 'https://www.desmos.com/calculator/abc123xyz', `${bad} must be rejected`);
-    assert.match(q('.field-status').textContent, /Enter a link/);
-  }
 });
 
 test('python tool runs code in a sandboxed iframe and validates messages', async () => {

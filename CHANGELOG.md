@@ -4,6 +4,15 @@ All notable changes are documented here. The format follows [Keep a Changelog](h
 
 ## [Unreleased]
 
+### Added
+
+- A built-in Graphing tool: functions, implicit equations, inequalities (dashed boundaries for strict ones), polar and parametric curves, points, lists, piecewise values, restrictions, sliders with animation, derivatives, sums, and integrals. Click a curve for its intercepts, turning points, and intersections.
+
+### Changed
+
+- The Desmos embed is replaced by the Graphing tool, and the Content-Security-Policy no longer allows frames from desmos.com.
+- File format version 2. Version 1 files still open: Desmos tabs become graphs, keeping any saved share link as a note.
+
 ## [0.1.0]
 
 ### Added

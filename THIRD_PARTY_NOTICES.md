@@ -8,4 +8,4 @@
 
 ## Desmos
 
-The Desmos calculators are embedded from `desmos.com` in an iframe. Desmos is not distributed with Clover. Use is subject to Desmos's terms of service, including restrictions on commercial use.
+Clover no longer embeds or loads anything from Desmos. The graphing tool's syntax is modelled on Desmos conventions; Desmos is a trademark of Desmos Studio PBC and is not affiliated with Clover.
