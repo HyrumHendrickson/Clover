@@ -1,5 +1,6 @@
 import { debounce, downloadBlob, h, onResize, slugify, uid } from '../core/dom.js';
 import { icon } from '../core/icons.js';
+import { createMathField } from '../core/mathfield.js';
 import { pointsOfInterest } from '../lib/graph/analysis.js';
 import { ROW_COLORS, renderGraph, rowColor } from '../lib/graph/draw.js';
 import { nearestOnPaths } from '../lib/graph/hit.js';
@@ -25,7 +26,9 @@ const SYNTAX = [
   ['Sliders', 'a = 1, then use a in other rows'],
   ['Restrictions', 'y = x {0 < x < 5}    y = {x < 0: -x, x}'],
   ['Lists and points', '[1...10]    (L, L^2)    total(L)'],
-  ['Calculus', "f'(x)    sum(k, 1, 10, k^2)    int(t, 0, x, sin(t))"],
+  ['Lists of curves', 'f(x) = [1, 2, 3]x draws three lines'],
+  ['Calculus', "f'(x)    d/dx x^3    sum(k, 1, 10, k^2)    int(t, 0, x, sin(t))"],
+  ['Greek letters', 'Type theta, pi, alpha, beta, ...'],
 ];
 
 /* ------------------------------------------------------------------- state */
@@ -374,7 +377,10 @@ export default {
           .filter((r) => r.id !== selectedId && !r.hidden && r.kind !== 'note')
           .map((r) => model.info(r.id)?.plot)
           .filter((plot) => plot && plot.type === 'explicit' && !plot.mask)
-          .map((plot) => safe(plot.f));
+          .flatMap((plot) => {
+            const count = plot.lanes ? Math.min(plot.lanes.count(), 8) : 1;
+            return Array.from({ length: count }, (_, i) => safe(plot.lanes ? plot.lanes.at(i) : plot.f));
+          });
         const f = selected.mask ? (x) => (selected.mask(x, selected.f(x)) ? selected.f(x) : NaN) : selected.f;
         const { xmin, xmax, ymin, ymax } = view.bounds();
         try {
@@ -507,27 +513,53 @@ export default {
           scheduleRender();
         },
       });
-      refs.input = h('input', {
-        class: 'gr-input',
-        type: 'text',
-        spellcheck: 'false',
-        autocomplete: 'off',
-        autocapitalize: 'off',
-        maxlength: String(MAX_TEXT),
-        placeholder: note ? 'Note' : 'Type an expression, like y = x^2',
-        'aria-label': label(note ? 'Note' : 'Expression'),
-        value: row.text,
-        oninput: () => {
-          row.text = cleanText(refs.input.value);
-          ctx.save();
-          if (!note) recompileLater();
-        },
-        onblur: () => recompileLater.flush(),
-        onkeydown: (event) => onKey(event, row),
-        onfocus: () => {
-          for (const [id, other] of rowEls) other.li.classList.toggle('is-current', id === row.id);
-        },
-      });
+      if (note) {
+        refs.input = h('input', {
+          class: 'gr-input',
+          type: 'text',
+          spellcheck: 'false',
+          autocomplete: 'off',
+          autocapitalize: 'off',
+          maxlength: String(MAX_TEXT),
+          placeholder: 'Note',
+          'aria-label': label('Note'),
+          value: row.text,
+          oninput: () => {
+            row.text = cleanText(refs.input.value);
+            ctx.save();
+          },
+          onkeydown: (event) => onKey(event, row),
+          onfocus: () => {
+            for (const [id, other] of rowEls) other.li.classList.toggle('is-current', id === row.id);
+          },
+        });
+        refs.field = {
+          el: refs.input,
+          input: refs.input,
+          refresh() {},
+          setValue(text) {
+            refs.input.value = text;
+          },
+        };
+      } else {
+        refs.field = createMathField({
+          value: row.text,
+          label: label('Expression'),
+          placeholder: 'Type an expression, like y = x^2',
+          maxlength: MAX_TEXT,
+          oninput: (text) => {
+            row.text = cleanText(text);
+            ctx.save();
+            recompileLater();
+          },
+          onblur: () => recompileLater.flush(),
+          onkeydown: (event) => onKey(event, row),
+          onfocus: () => {
+            for (const [id, other] of rowEls) other.li.classList.toggle('is-current', id === row.id);
+          },
+        });
+        refs.input = refs.field.input;
+      }
       refs.value = h('p', { class: 'gr-value', hidden: true });
       refs.error = h('p', { class: 'gr-error', role: 'alert', hidden: true });
       refs.add = h('button', {
@@ -644,7 +676,7 @@ export default {
         'li',
         { class: 'gr-row', dataset: { id: row.id, kind: note ? 'note' : 'empty' } },
         note ? h('span', { class: 'gr-dot gr-dot-note', 'aria-hidden': 'true' }, 'N') : refs.dot,
-        h('div', { class: 'gr-body' }, refs.input, refs.slider, refs.domain, refs.value, refs.error, refs.add),
+        h('div', { class: 'gr-body' }, refs.field.el, refs.slider, refs.domain, refs.value, refs.error, refs.add),
         h('div', { class: 'gr-actions' }, note ? null : refs.color, refs.remove),
       );
       return refs;
@@ -687,6 +719,7 @@ export default {
         refs.error.hidden = text === '';
         if (text) refs.input.setAttribute('aria-invalid', 'true');
         else refs.input.removeAttribute('aria-invalid');
+        refs.field.el.classList.toggle('is-invalid', text !== '');
       };
       clearTimeout(refs.errorTimer);
       // While someone is typing, wait a moment before calling half-written input an error.
@@ -738,7 +771,7 @@ export default {
       if (!row || !info?.slider || !model.setSlider(id, value)) return;
       row.text = sliderText(info.name, value, sliderStep(info.slider));
       const refs = rowEls.get(id);
-      if (refs) refs.input.value = row.text;
+      if (refs) refs.field.setValue(row.text);
       syncValues();
       ctx.save();
       scheduleRender(true);

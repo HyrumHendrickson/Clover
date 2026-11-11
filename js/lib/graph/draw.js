@@ -190,12 +190,23 @@ function drawPlot(g, view, item, theme, fast, width) {
   switch (plot.type) {
     case 'explicit':
     case 'explicitX': {
-      const paths = sampleExplicit(plot.f, plot.mask, view, { vertical: plot.type === 'explicitX', step: quality });
+      const paths = [];
+      const count = plot.lanes ? plot.lanes.count() : 1;
+      for (let i = 0; i < count; i += 1) {
+        const f = plot.lanes ? plot.lanes.at(i) : plot.f;
+        paths.push(...sampleExplicit(f, plot.mask, view, { vertical: plot.type === 'explicitX', step: quality }));
+      }
       strokePaths(g, paths, color, width);
       return { paths };
     }
     case 'polar': {
-      const paths = samplePolar(plot.f, plot.mask, plot.domain(), view, { samples: fast ? 1000 : 2400 });
+      const paths = [];
+      const count = plot.lanes ? plot.lanes.count() : 1;
+      const domain = plot.domain();
+      for (let i = 0; i < count; i += 1) {
+        const f = plot.lanes ? plot.lanes.at(i) : plot.f;
+        paths.push(...samplePolar(f, plot.mask, domain, view, { samples: fast ? 1000 : 2400 }));
+      }
       strokePaths(g, paths, color, width);
       return { paths };
     }

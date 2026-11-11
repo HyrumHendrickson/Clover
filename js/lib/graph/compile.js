@@ -51,9 +51,9 @@ export class GraphCompileError extends Error {
   }
 }
 
-/** Slots reserved for the plot variables. */
-export const PLOT_SLOT = { x: 0, y: 1, t: 2, theta: 3, r: 4 };
-export const FIRST_FREE_SLOT = 5;
+/** Slots reserved for the plot variables. The 3D graph adds z, u, and v. */
+export const PLOT_SLOT = { x: 0, y: 1, t: 2, theta: 3, r: 4, z: 5, u: 6, v: 7 };
+export const FIRST_FREE_SLOT = 8;
 
 /* ----------------------------------------------------------------- builtins */
 
@@ -199,6 +199,8 @@ export class FnEntry {
 export class Scope {
   constructor(angle = 'rad') {
     this.angle = angle === 'deg' ? 'deg' : 'rad';
+    /** Bumped whenever a variable changes value, so cached results can be dropped. */
+    this.version = 0;
     this.builtins = makeBuiltins(this.angle);
     /** @type {Map<string, { name: string, value: any }>} */
     this.vars = new Map();
@@ -209,8 +211,10 @@ export class Scope {
 
 /** State for compiling one row or function body. */
 export class Ctx {
-  constructor(scope, { allowed = [], firstSlot = FIRST_FREE_SLOT } = {}) {
+  constructor(scope, { allowed = [], firstSlot = FIRST_FREE_SLOT, dimensions = 2 } = {}) {
     this.scope = scope;
+    /** 3 when compiling for the 3D graph, which accepts (x, y, z) points. */
+    this.dimensions = dimensions;
     this.allowed = new Set(allowed);
     this.locals = new Map();
     this.nslots = firstSlot;
@@ -574,19 +578,54 @@ function compileDeriv(node, cx) {
   return (env) => mapNumbers(`${node.name}'`, (x) => derivative(f, x, node.order), arg(env));
 }
 
-function makePoint(a, b) {
-  if (isNum(a) && isNum(b)) return new Point(a, b);
-  const la = Array.isArray(a);
-  const lb = Array.isArray(b);
-  if (la && lb && a.length !== b.length) {
-    throw new GraphEvalError(
-      `The coordinates of a point list must have the same length (${a.length} and ${b.length}).`,
+/** The slot holding a variable that can be differentiated: a plot variable, a parameter, or a bound name. */
+function slotOf(name, cx) {
+  const local = cx.locals.get(name);
+  if (local !== undefined) return local;
+  if (cx.allowed.has(name)) return PLOT_SLOT[name];
+  return null;
+}
+
+/**
+ * d/dx expr: a numeric derivative with respect to a variable of this row.
+ * The variable is nudged in place in the slot array and restored afterwards.
+ */
+function compileDdx(node, cx) {
+  const slot = slotOf(node.variable, cx);
+  if (slot === null) {
+    throw new GraphCompileError(
+      `d/d${node.variable} needs ${node.variable} to be a variable of the graph or a function parameter, like f(${node.variable}) = d/d${node.variable} ${node.variable}^2`,
+      node.pos,
     );
   }
-  if (la || lb) {
-    const length = la ? a.length : b.length;
-    const out = new Array(length);
-    for (let i = 0; i < length; i += 1) out[i] = makePoint(la ? a[i] : a, lb ? b[i] : b);
+  const arg = compileNode(node.arg, cx);
+  return (env) => {
+    const x = env[slot];
+    if (!isNum(x)) throw new GraphEvalError('A derivative needs a single number for its variable.');
+    const f = (v) => {
+      env[slot] = v;
+      return arg(env);
+    };
+    try {
+      return derivative(f, x, 1);
+    } finally {
+      env[slot] = x;
+    }
+  };
+}
+
+function makePoint(a, b, c = undefined) {
+  if (isNum(a) && isNum(b) && (c === undefined || isNum(c))) return new Point(a, b, c);
+  const parts = c === undefined ? [a, b] : [a, b, c];
+  const lengths = parts.filter(Array.isArray).map((p) => p.length);
+  if (lengths.some((n) => n !== lengths[0])) {
+    throw new GraphEvalError(`The coordinates of a point list must have the same length (${lengths.join(' and ')}).`);
+  }
+  if (lengths.length > 0) {
+    const out = new Array(lengths[0]);
+    const at = (p, i) => (Array.isArray(p) ? p[i] : p);
+    for (let i = 0; i < out.length; i += 1)
+      out[i] = makePoint(at(a, i), at(b, i), c === undefined ? undefined : at(c, i));
     return out;
   }
   throw new GraphEvalError('Point coordinates must be numbers.');
@@ -707,9 +746,18 @@ export function compileNode(node, cx) {
       return compileCall(node, cx);
     case 'deriv':
       return compileDeriv(node, cx);
+    case 'ddx':
+      return compileDdx(node, cx);
     case 'point': {
+      if (node.z && cx.dimensions < 3) {
+        throw new GraphCompileError('Points here have two coordinates, like (2, 3). Open a 3D graph to use (x, y, z).');
+      }
       const x = compileNode(node.x, cx);
       const y = compileNode(node.y, cx);
+      if (node.z) {
+        const z = compileNode(node.z, cx);
+        return (env) => makePoint(x(env), y(env), z(env));
+      }
       return (env) => makePoint(x(env), y(env));
     }
     case 'list': {
@@ -739,7 +787,7 @@ export function compileNode(node, cx) {
       const target = compileNode(node.target, cx);
       const field = node.field;
       const pick = (v) => {
-        if (v instanceof Point) return v[field];
+        if (v instanceof Point) return v[field] ?? NaN;
         if (Array.isArray(v)) return v.map(pick);
         throw new GraphEvalError(`.${field} needs a point or a list of points.`);
       };

@@ -16,9 +16,11 @@ export class GraphEvalError extends Error {
 }
 
 export class Point {
-  constructor(x, y) {
+  /** `z` is only set for points in the 3D graph. */
+  constructor(x, y, z = undefined) {
     this.x = x;
     this.y = y;
+    if (z !== undefined) this.z = z;
   }
 }
 
@@ -167,21 +169,28 @@ function scalarOp(op, a, b) {
   }
 }
 
+const movePoint = (a, b, sign) =>
+  new Point(a.x + sign * b.x, a.y + sign * b.y, a.z === undefined ? undefined : a.z + sign * b.z);
+const scalePoint = (p, k) => new Point(p.x * k, p.y * k, p.z === undefined ? undefined : p.z * k);
+
 function pointOp(op, a, b) {
   const pa = a instanceof Point;
   const pb = b instanceof Point;
   if (pa && pb) {
-    if (op === '+') return new Point(a.x + b.x, a.y + b.y);
-    if (op === '-') return new Point(a.x - b.x, a.y - b.y);
+    if ((a.z === undefined) !== (b.z === undefined)) {
+      throw new GraphEvalError('A 2D point and a 3D point cannot be combined.');
+    }
+    if (op === '+') return movePoint(a, b, 1);
+    if (op === '-') return movePoint(a, b, -1);
     throw new GraphEvalError(
       `Two points cannot be combined with "${op}". Add or subtract them, or multiply one by a number.`,
     );
   }
   if (pa && typeof b === 'number') {
-    if (op === '*') return new Point(a.x * b, a.y * b);
-    if (op === '/') return new Point(a.x / b, a.y / b);
+    if (op === '*') return scalePoint(a, b);
+    if (op === '/') return scalePoint(a, 1 / b);
   }
-  if (pb && typeof a === 'number' && op === '*') return new Point(a * b.x, a * b.y);
+  if (pb && typeof a === 'number' && op === '*') return scalePoint(b, a);
   throw new GraphEvalError(
     `A point cannot be used with "${op}" here. Multiply or divide a point by a number, or add two points.`,
   );
@@ -205,7 +214,7 @@ export function arith(op, a, b) {
 
 export function negate(v) {
   if (typeof v === 'number') return -v;
-  if (v instanceof Point) return new Point(-v.x, -v.y);
+  if (v instanceof Point) return scalePoint(v, -1);
   if (Array.isArray(v)) return v.map(negate);
   throw new GraphEvalError('Only numbers, points, and lists can be negated.');
 }
@@ -390,7 +399,10 @@ export function formatNumber(n, digits = 10) {
 /** Format any value for display, shortening long lists. */
 export function formatValue(v, maxItems = 8) {
   if (typeof v === 'number') return formatNumber(v);
-  if (v instanceof Point) return `(${formatNumber(v.x)}, ${formatNumber(v.y)})`;
+  if (v instanceof Point) {
+    const z = v.z === undefined ? '' : `, ${formatNumber(v.z)}`;
+    return `(${formatNumber(v.x)}, ${formatNumber(v.y)}${z})`;
+  }
   if (Array.isArray(v)) {
     const shown = v.slice(0, maxItems).map((item) => formatValue(item, maxItems));
     const more = v.length > maxItems ? `, \u2026 (${v.length} items)` : '';

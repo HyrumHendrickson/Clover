@@ -1,0 +1,303 @@
+/* Typeset math (lib/graph/typeset.js) and the math field (core/mathfield.js). */
+
+.mt {
+  display: inline-block;
+  max-width: 100%;
+  color: var(--text);
+  font-family: 'STIX Two Math', 'Cambria Math', 'Latin Modern Math', 'Times New Roman', var(--font-display), serif;
+  font-size: 1.2em;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.mt-v {
+  font-style: italic;
+}
+
+.mt-n,
+.mt-f,
+.mt-t {
+  font-style: normal;
+}
+
+.mt-f {
+  margin-right: 0.08em;
+}
+
+.mt-f.mt-spaced {
+  margin: 0 0.35em;
+}
+
+.mt-o {
+  margin: 0 0.22em;
+}
+
+.mt-o.mt-rel {
+  margin: 0 0.32em;
+}
+
+.mt-o.mt-tight {
+  margin: 0 0.04em 0 0;
+}
+
+.mt-comma {
+  margin-right: 0.28em;
+}
+
+.mt-sub,
+.mt-sup {
+  font-size: 0.72em;
+  font-style: normal;
+  line-height: 0;
+  position: relative;
+}
+
+.mt-sub {
+  top: 0.32em;
+  margin-left: 0.04em;
+}
+
+.mt-sup {
+  top: -0.62em;
+  margin-left: 0.05em;
+}
+
+.mt-sup > .mt-v {
+  font-style: italic;
+}
+
+.mt-sup .mt-sup {
+  top: -0.5em;
+}
+
+.mt-gap {
+  display: inline-block;
+  min-width: 0.5em;
+  height: 0.8em;
+  margin: 0 0.05em;
+  border: 1px dashed var(--border-strong);
+  border-radius: 2px;
+  vertical-align: -0.1em;
+}
+
+.mt-prime {
+  margin: 0 0.06em;
+}
+
+.mt-frac {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  margin: 0 0.12em;
+  vertical-align: middle;
+  text-align: center;
+  line-height: 1.25;
+}
+
+.mt-num {
+  padding: 0 0.15em 0.08em;
+  border-bottom: 1.5px solid currentColor;
+}
+
+.mt-den {
+  padding: 0.08em 0.15em 0;
+}
+
+.mt-sqrt {
+  display: inline-flex;
+  align-items: stretch;
+  vertical-align: middle;
+}
+
+.mt-radix {
+  align-self: flex-end;
+  margin-right: 1px;
+  font-style: normal;
+  transform: scaleY(1.15);
+  transform-origin: bottom;
+}
+
+.mt-index {
+  align-self: flex-start;
+  margin-right: -0.25em;
+  font-size: 0.6em;
+  line-height: 1;
+}
+
+.mt-radicand {
+  padding: 0.04em 0.12em 0 0.1em;
+  border-top: 1.5px solid currentColor;
+}
+
+.mt-abs,
+.mt-fence {
+  display: inline-flex;
+  align-items: center;
+}
+
+.mt-bar {
+  display: inline-block;
+  width: 0;
+  height: 1.05em;
+  margin: 0 0.1em;
+  border-left: 1.5px solid currentColor;
+}
+
+.mt-abs.mt-tall .mt-bar {
+  align-self: stretch;
+  height: auto;
+}
+
+.mt-inner {
+  display: inline-block;
+}
+
+.mt-fence.mt-tall {
+  align-items: stretch;
+}
+
+.mt-fence.mt-tall .mt-open,
+.mt-fence.mt-tall .mt-close {
+  display: inline-block;
+  width: 0.28em;
+  overflow: hidden;
+  color: transparent;
+  border: 0 solid currentColor;
+  border-color: var(--text);
+}
+
+.mt-fence.mt-tall .mt-open {
+  border-left-width: 1.5px;
+  border-radius: 100% 0 0 100% / 50% 0 0 50%;
+}
+
+.mt-fence.mt-tall .mt-close {
+  border-right-width: 1.5px;
+  border-radius: 0 100% 100% 0 / 0 50% 50% 0;
+}
+
+.mt-big {
+  display: inline-flex;
+  align-items: center;
+  margin: 0 0.15em;
+  vertical-align: middle;
+}
+
+.mt-bigstack {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  margin-right: 0.2em;
+  line-height: 1.1;
+}
+
+.mt-bigstack .mt-sym {
+  font-size: 1.6em;
+  line-height: 1;
+}
+
+.mt-lim {
+  font-size: 0.68em;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.mt-bigside {
+  display: inline-flex;
+  align-items: stretch;
+  margin-right: 0.2em;
+}
+
+.mt-sym-int {
+  font-size: 1.9em;
+  line-height: 1;
+  transform: scaleX(0.9);
+}
+
+.mt-lims {
+  display: inline-flex;
+  flex-direction: column;
+  justify-content: space-between;
+  margin-left: -0.15em;
+}
+
+.mt-diff {
+  margin-left: 0.25em;
+}
+
+.mt-diff .mt-f {
+  margin: 0 0.04em 0 0;
+}
+
+/* ---------------------------------------------------------------- the field */
+
+.mf {
+  position: relative;
+  min-height: 40px;
+}
+
+.mf-display {
+  display: flex;
+  align-items: center;
+  min-height: 40px;
+  padding: 2px 8px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  overflow-x: auto;
+  overflow-y: hidden;
+  color: var(--text);
+  pointer-events: none;
+}
+
+.mf-placeholder {
+  color: var(--text-muted);
+  font: 14px var(--font-ui);
+}
+
+/* Unfocused: the input is an invisible layer over the typeset text, so a click focuses it. */
+.mf:not(.is-focused) .mf-input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  color: transparent;
+  caret-color: transparent;
+  background: transparent;
+  cursor: text;
+}
+
+.mf:not(.is-focused) .mf-input::placeholder {
+  color: transparent;
+}
+
+.mf:not(.is-focused):hover .mf-display {
+  border-color: var(--border);
+}
+
+.mf.is-invalid:not(.is-focused) .mf-display {
+  border-color: var(--danger);
+}
+
+/* Focused: the raw text is editable, with the typeset form beneath it as a preview. */
+.mf.is-focused .mf-display {
+  min-height: 34px;
+  margin-top: 2px;
+  color: var(--text-muted);
+  background: var(--surface-2);
+}
+
+.mf.is-focused.is-empty .mf-display {
+  display: none;
+}
+
+.mf.is-focused .mf-input {
+  background: var(--surface);
+  border-color: var(--border-strong);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .mf-display {
+    transition: border-color 0.12s ease;
+  }
+}

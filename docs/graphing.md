@@ -25,9 +25,17 @@ An undefined letter in a row offers an **Add slider** button.
 - Constants: `pi`, `tau`, `e`. `log` is base 10, `ln` is natural, `log_2(x)` is base 2.
 - Trigonometric, inverse (`arcsin`, `asin`), and hyperbolic functions are available. Angles are in radians unless you choose degrees in the graph settings; `30°` converts to radians.
 - Restrictions: `y = x {0 < x < 5}`. Piecewise values: `y = {x < 0: -x, x}`.
-- Functions: `f(x) = x^2`, `g(x, y) = x + y`, then `f(3)`. `f'(x)` and `f''(x)` are numeric derivatives.
+- Functions: `f(x) = x^2`, `g(x, y) = x + y`, then `f(3)`. `f'(x)` and `f''(x)` are numeric derivatives, and so is `d/dx x^3` (it differentiates the next term; use brackets for more, like `d/dx (x^2 + x)`).
 - `sum(k, 1, 10, k^2)`, `prod(k, 1, 5, k)`, `int(t, 0, x, sin(t))`.
 - Also: `mod`, `gcd`, `lcm`, `nCr`, `nPr`, `floor`, `ceil`, `round`, `sign`, `x!`.
+
+## Typeset display and typing aids
+
+Rows show as typeset math when you are not editing them: powers rise, `/` stacks into a fraction, roots get a radical, and `sum`, `prod`, and `int` become big operators with limits. While you edit, a live typeset preview sits under the text. Typing a complete Greek name (`theta`, `pi`, `tau`, `alpha`, `beta`, `gamma`, `delta`, `epsilon`, `lambda`, `phi`, `sigma`, `omega`) turns it into the letter. Greek letters can be used as variable names.
+
+## Lists in definitions
+
+A list inside a function or equation draws one curve per item: `f(x) = [1, 2, 3]x` draws three lines, and `y = [1...n]x` follows the slider `n`. This works for `y =`, `x =`, polar rows, and function definitions, up to 50 curves per row.
 
 ## Lists and points
 
@@ -44,4 +52,22 @@ List functions: `total`, `length`, `mean`, `median`, `stdev` (sample), `stdevp` 
 
 ## Not supported
 
-Tables, folders, images, regressions, draggable points, 3D, polar inequalities, and symbolic derivatives.
+Tables, folders, images, regressions, draggable points, polar inequalities, and symbolic derivatives. Three-coordinate points belong to the 3D graph; see below.
+
+## 3D graph
+
+The 3D tab uses the same language. Variables are `x`, `y`, `z`; `t`, `u`, `v` are parameters.
+
+| Type               | Example                                         |
+| ------------------ | ----------------------------------------------- |
+| Surface            | `z = sin(x)cos(y)`, `x^2 - y^2`, `f(x, y) = xy` |
+| Implicit surface   | `x^2 + y^2 + z^2 = 9`, `x = 2`                  |
+| Space curve        | `(cos(t), sin(t), t/4) {0 <= t <= 12}`          |
+| Parametric surface | `(u cos(v), u sin(v), u) {0 <= u <= 3}`         |
+| Points             | `(1, 2, 3)`, `[(0, 0, 0), (1, 1, 1)]`           |
+
+Parameter limits default to 0 to 2π and come from a restriction or the boxes under the row. Lists of surfaces (`z = [1, 2, 3]x`) draw up to 12 sheets. Inequalities are not supported in 3D. Drag to orbit, shift-drag or right-drag to pan, scroll or pinch to zoom; arrow keys orbit, `+`/`-` zoom, `0` resets.
+
+## Notebook
+
+The notebook tab is a column of text, math, and graph cells. Definitions and sliders are shared by every cell. Text cells accept `#` headings, lists, `**bold**`, `*italic*`, `` `code` ``, and `$math$`.

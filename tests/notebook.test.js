@@ -1,0 +1,217 @@
+import { test, after } from 'node:test';
+import assert from 'node:assert/strict';
+import { installDom, press, tick, type } from './support/dom.js';
+
+const env = installDom();
+const { window, document, elements } = env;
+
+const contexts = new WeakMap();
+const logs = new WeakMap();
+window.HTMLCanvasElement.prototype.getContext = function getContext() {
+  if (!contexts.has(this)) {
+    const log = {};
+    const target = {
+      createImageData: (w, h) => ({ data: new Uint8ClampedArray(Math.max(1, w * h * 4)) }),
+      measureText: () => ({ width: 40 }),
+    };
+    logs.set(this, log);
+    contexts.set(
+      this,
+      new Proxy(target, {
+        get: (obj, key) => (key in obj ? obj[key] : (...args) => ((log[key] ??= []).push(args), undefined)),
+        set: () => true,
+      }),
+    );
+  }
+  return contexts.get(this);
+};
+window.HTMLElement.prototype.setPointerCapture = () => {};
+
+const { App } = await import('../js/core/app.js');
+const { TOOLS } = await import('../js/tools/index.js');
+const { parseImport, exportWorkspace } = await import('../js/core/workspace.js');
+
+const app = new App(elements);
+app.init();
+after(() => {
+  app.save.cancel();
+  app.teardown();
+  window.close();
+});
+
+const notebook = TOOLS.notebook;
+const tab = app.addTab({ type: 'notebook' });
+const panel = () => document.getElementById(`panel-${tab.id}`);
+const q = (selector, root = panel()) => root.querySelector(selector);
+const qa = (selector, root = panel()) => [...root.querySelectorAll(selector)];
+const cells = () => qa('.nb-cell');
+const settle = () => tick(300);
+const addButton = (label) => qa('.nb-toolbar button').find((b) => b.textContent === label);
+
+test('a new notebook has notes, calculations, and a graph', async () => {
+  await settle();
+  assert.equal(q('.panel-error'), null);
+  assert.deepEqual(
+    cells().map((c) => c.className.match(/nb-(text|math|graph)/)[1]),
+    ['text', 'math', 'math', 'graph'],
+  );
+  assert.ok(q('.nb-text-view .md h1'), 'text renders as Markdown');
+  assert.ok(q('.nb-text-view .nb-math-inline .mt-sup'), 'math inside text is typeset');
+});
+
+test('math cells share definitions: f(3) uses f from the cell above', async () => {
+  const value = () => qa('.gr-value', cells()[2])[0].textContent;
+  assert.equal(value(), '= 7');
+  const def = qa('.gr-input', cells()[1])[0];
+  type(window, def, 'f(x) = x^2 + 1');
+  await settle();
+  assert.equal(value(), '= 10');
+  assert.equal(tab.state.cells[1].row.text, 'f(x) = x^2 + 1');
+});
+
+test('the graph cell draws what its rows say, using definitions from math cells', async () => {
+  const canvas = q('canvas.nb-canvas');
+  assert.ok((logs.get(canvas).stroke ?? []).length > 0, 'the curve y = f(x) is stroked');
+  assert.equal(qa('.gr-error', cells()[3]).filter((e) => !e.hidden).length, 0);
+  const input = qa('.gr-input', cells()[3])[0];
+  type(window, input, 'y = g(x)');
+  document.activeElement?.blur?.();
+  input.blur();
+  await settle();
+  assert.equal(qa('.gr-row', cells()[3])[0].dataset.kind, 'explicit', 'g is not defined, so it multiplies: y = g x');
+  type(window, input, 'y = f(x) + [0, 2]');
+  await settle();
+  assert.equal(qa('.gr-error', cells()[3]).filter((e) => !e.hidden).length, 0, 'a list draws two curves');
+});
+
+test('a slider in a math cell moves a graph cell', async () => {
+  const input = qa('.gr-input', cells()[2])[0];
+  type(window, input, 'a = 1');
+  await settle();
+  assert.ok(
+    qa('.gr-slider', cells()[2]).some((s) => !s.hidden),
+    'a number becomes a slider',
+  );
+  const g = qa('.gr-input', cells()[3])[0];
+  type(window, g, 'y = a x');
+  await settle();
+  const before = logs.get(q('canvas.nb-canvas')).stroke.length;
+  const range = qa('input[type=range]', cells()[2])[0];
+  range.value = '4';
+  range.dispatchEvent(new window.Event('input', { bubbles: true }));
+  await settle();
+  assert.equal(tab.state.cells[2].row.text, 'a = 4');
+  assert.ok(logs.get(q('canvas.nb-canvas')).stroke.length > before, 'the graph redraws');
+});
+
+test('a math row that draws a curve says where to see it', async () => {
+  const input = qa('.gr-input', cells()[2])[0];
+  type(window, input, 'y = x^2');
+  await settle();
+  assert.match(q('.gr-hint', cells()[2]).textContent, /graph cell/);
+});
+
+test('Enter in a math cell adds one below, and Backspace on an empty one removes it', async () => {
+  const before = tab.state.cells.length;
+  const input = qa('.gr-input', cells()[1])[0];
+  input.focus();
+  press(window, input, 'Enter');
+  assert.equal(tab.state.cells.length, before + 1);
+  assert.equal(tab.state.cells[2].type, 'math');
+  assert.equal(tab.state.cells[2].row.text, '');
+  const fresh = qa('.gr-input', cells()[2])[0];
+  press(window, fresh, 'Backspace');
+  assert.equal(tab.state.cells.length, before);
+  await settle();
+});
+
+test('cells can be added, moved, and deleted, and ids stay unique', async () => {
+  addButton('Text').click();
+  assert.equal(tab.state.cells.at(-1).type, 'text');
+  assert.equal(q('.nb-text-edit', cells().at(-1)).hidden, false, 'a new note opens for writing');
+  addButton('Graph').click();
+  assert.equal(tab.state.cells.at(-1).type, 'graph');
+  const ids = tab.state.cells.flatMap((c) => [c.id, ...(c.row ? [c.row.id] : []), ...(c.rows ?? []).map((r) => r.id)]);
+  assert.equal(new Set(ids).size, ids.length, 'cell and row ids are unique');
+
+  const last = tab.state.cells.at(-1).id;
+  const up = qa('button', cells().at(-1)).find((b) => b.title === 'Move up');
+  up.click();
+  assert.equal(tab.state.cells.at(-2).id, last);
+  const del = qa('button', cells().at(-2)).find((b) => b.title === 'Delete cell');
+  const count = tab.state.cells.length;
+  del.click();
+  assert.equal(tab.state.cells.length, count - 1);
+  await settle();
+});
+
+test('a note is edited as Markdown and shown rendered', () => {
+  const view = q('.nb-text-view');
+  view.click();
+  const editor = q('.nb-text-edit');
+  assert.equal(editor.hidden, false);
+  type(window, editor, '## Plan\nTry **this** and $y = x^2$.');
+  assert.equal(tab.state.cells[0].text, '## Plan\nTry **this** and $y = x^2$.');
+  editor.blur();
+  assert.equal(q('.nb-text-view h2').textContent, 'Plan');
+  assert.equal(q('.nb-text-view strong').textContent, 'this');
+  assert.equal(q('.nb-text-view .mt-sup').textContent, '2');
+});
+
+test('the last cell cannot be deleted away to nothing', async () => {
+  while (tab.state.cells.length > 1) {
+    qa('button', cells()[0])
+      .find((b) => b.title === 'Delete cell')
+      .click();
+  }
+  qa('button', cells()[0])
+    .find((b) => b.title === 'Delete cell')
+    .click();
+  assert.equal(tab.state.cells.length, 1);
+  assert.equal(tab.state.cells[0].type, 'math');
+  await settle();
+});
+
+test('state normalises hostile input, keeps ids unique across cells, and limits graphs', () => {
+  const graph = (id) => ({
+    type: 'graph',
+    id,
+    rows: [
+      { id: 'r1', text: 'y=x' },
+      { id: 'r1', text: 'y=2x' },
+    ],
+  });
+  const state = notebook.normalize({
+    cells: [
+      { type: 'nope' },
+      null,
+      { type: 'text', id: 'a', text: 'x'.repeat(10000) },
+      { type: 'math', id: 'a', row: { id: 'r1', text: 'f(x)=1' } },
+      ...Array.from({ length: 14 }, (_, i) => graph(`g${i}`)),
+    ],
+    angle: 'weird',
+  });
+  assert.equal(state.angle, 'rad');
+  assert.ok(state.cells[0].text.length <= 4000);
+  assert.equal(state.cells.filter((c) => c.type === 'graph').length, 10);
+  const cellIds = state.cells.map((c) => c.id);
+  assert.equal(new Set(cellIds).size, cellIds.length);
+  const rowIds = state.cells.flatMap((c) => (c.row ? [c.row.id] : (c.rows ?? []).map((r) => r.id)));
+  assert.equal(new Set(rowIds).size, rowIds.length, 'row ids are unique across the whole notebook');
+  assert.deepEqual(notebook.normalize(state), state);
+  assert.equal(notebook.normalize({ cells: [] }).cells.length, 4, 'an empty notebook gets the starter cells');
+});
+
+test('a notebook survives export and import', () => {
+  const json = JSON.stringify(exportWorkspace({ activeId: tab.id, tabs: [tab] }));
+  const restored = parseImport(json, TOOLS, () => 'id');
+  assert.equal(restored.tabs[0].type, 'notebook');
+  assert.deepEqual(restored.tabs[0].state, notebook.normalize(tab.state));
+});
+
+test('the launcher preview draws without errors', () => {
+  const c = document.createElement('canvas');
+  assert.doesNotThrow(() =>
+    notebook.preview(c, { bg: '#fff', grid: '#ddd', axis: '#999', text: '#555', ink: '#111', a: '#2563eb' }),
+  );
+});

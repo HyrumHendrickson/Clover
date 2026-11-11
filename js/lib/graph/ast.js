@@ -53,9 +53,14 @@ function walk(node, bound, out) {
       out.calls.add(node.name);
       for (const arg of node.args) walk(arg, bound, out);
       return;
+    case 'ddx':
+      if (!bound.has(node.variable)) out.ids.add(node.variable);
+      walk(node.arg, bound, out);
+      return;
     case 'point':
       walk(node.x, bound, out);
       walk(node.y, bound, out);
+      if (node.z) walk(node.z, bound, out);
       return;
     case 'list':
       for (const item of node.items) walk(item, bound, out);

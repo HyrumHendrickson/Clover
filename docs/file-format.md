@@ -31,13 +31,15 @@ Files use the `.clover` extension and are UTF-8 JSON. Importers accept `.clover`
 
 ## Tool state
 
-| `type`    | State                                                                  |
-| --------- | ---------------------------------------------------------------------- |
-| `graph`   | `rows`, `view`, `grid`, `minor`, `numbers`, `angle`                    |
-| `matrix`  | `mode`, `m`, `n`, `p`, `A`, `B`, `x` (cell text), `view`               |
-| `complex` | `expr`, `mode`, `quality`, `grid`, `view`                              |
-| `vector`  | `p`, `q`, `arrows`, `heat`, `flow`, `grid`, `density`, `seeds`, `view` |
-| `python`  | `code`                                                                 |
+| `type`     | State                                                                  |
+| ---------- | ---------------------------------------------------------------------- |
+| `graph`    | `rows`, `view`, `grid`, `minor`, `numbers`, `angle`                    |
+| `matrix`   | `mode`, `m`, `n`, `p`, `A`, `B`, `x` (cell text), `view`               |
+| `complex`  | `expr`, `mode`, `quality`, `grid`, `view`                              |
+| `vector`   | `p`, `q`, `arrows`, `heat`, `flow`, `grid`, `density`, `seeds`, `view` |
+| `python`   | `code`                                                                 |
+| `graph3d`  | `rows`, `camera`, `bounds`, `grid`, `numbers`, `wire`, `angle`         |
+| `notebook` | `cells` (`text`, `math`, or `graph`), `angle`                          |
 
 `view` is `{ cx, cy, radius }`: the centre and half the shorter canvas side in world units. The `graph` tool uses `{ cx, cy, xspan, yspan }` instead, because its axes scale independently: the units across the width and height, with a `yspan` of 0 meaning "square".
 

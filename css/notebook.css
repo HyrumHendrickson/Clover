@@ -1,0 +1,270 @@
+/* Notebook: a single column of text, math, and graph cells. */
+
+.notebook-tool {
+  align-items: stretch;
+  padding: 0;
+  overflow: auto;
+}
+
+.nb-page {
+  width: min(960px, 100%);
+  margin: 0 auto;
+  padding: 16px clamp(12px, 3vw, 32px) 80px;
+}
+
+.nb-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+}
+
+.nb-toolbar-label {
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.nb-spacer {
+  flex: 1;
+}
+
+.nb-cell {
+  position: relative;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.nb-cell:focus-within {
+  border-color: var(--border-strong);
+  box-shadow: 0 0 0 2px var(--selection);
+}
+
+.nb-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 28px;
+  padding: 0 6px 0 12px;
+  border-bottom: 1px solid transparent;
+  color: var(--text-muted);
+  font-size: 11.5px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.nb-actions {
+  display: flex;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+
+.nb-cell:hover .nb-actions,
+.nb-cell:focus-within .nb-actions {
+  opacity: 1;
+}
+
+.nb-tool {
+  width: 26px;
+  min-height: 26px;
+}
+
+.nb-body {
+  padding: 0 12px 12px;
+}
+
+.nb-insert {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  height: 28px;
+  padding: 2px 0;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+
+.nb-insert:hover,
+.nb-insert:focus-within,
+.nb-cells:hover .nb-insert:last-child {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .nb-insert,
+  .nb-actions {
+    opacity: 1;
+  }
+}
+
+/* ------------------------------------------------------------------- text */
+
+.nb-text-view {
+  min-height: 40px;
+  padding: 4px 2px;
+  border-radius: var(--radius-sm);
+  cursor: text;
+}
+
+.nb-text-view:hover {
+  background: var(--surface-2);
+}
+
+.nb-text-edit {
+  display: block;
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  font: 14px/1.5 var(--font-mono);
+  resize: vertical;
+}
+
+.nb-placeholder {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+.md {
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+.md > :first-child {
+  margin-top: 0;
+}
+
+.md > :last-child {
+  margin-bottom: 0;
+}
+
+.md h1,
+.md h2,
+.md h3 {
+  margin: 0.8em 0 0.3em;
+  font-family: var(--font-display);
+  line-height: 1.25;
+}
+
+.md h1 {
+  font-size: 1.7em;
+}
+
+.md h2 {
+  font-size: 1.35em;
+}
+
+.md h3 {
+  font-size: 1.12em;
+}
+
+.md p,
+.md ul,
+.md ol {
+  margin: 0.5em 0;
+}
+
+.md code {
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--surface-3);
+  font: 0.9em var(--font-mono);
+}
+
+.nb-math-inline .mt {
+  font-size: 1.08em;
+  line-height: 1.2;
+}
+
+/* ------------------------------------------------------------------- math */
+
+.nb-math .gr-list {
+  margin-top: 2px;
+}
+
+.nb-math .gr-value {
+  margin-left: 8px;
+  color: var(--text);
+  font-size: 15px;
+}
+
+/* ------------------------------------------------------------------ graph */
+
+.nb-graph-body {
+  display: grid;
+  grid-template-columns: minmax(240px, 320px) minmax(0, 1fr);
+  gap: 12px;
+}
+
+.nb-graph-rows {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.nb-graph-rows .gr-add {
+  padding: 8px;
+}
+
+.nb-stage {
+  position: relative;
+  min-height: 340px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.nb-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.nb-graph-tools {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+}
+
+@media (max-width: 720px) {
+  .nb-graph-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media print {
+  .topbar,
+  .nb-toolbar,
+  .nb-bar,
+  .nb-insert,
+  .gr-actions,
+  .gr-add,
+  .nb-graph-tools {
+    display: none !important;
+  }
+
+  .nb-cell {
+    border: 0;
+    break-inside: avoid;
+  }
+
+  .nb-graph-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

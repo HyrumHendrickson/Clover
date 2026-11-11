@@ -27,7 +27,7 @@ test('first run shows the launcher with one card per tool', () => {
   assert.equal(app.tabs.length, 0);
   assert.equal(elements.launcher.hidden, false);
   assert.equal(elements.launcher.querySelectorAll('.launch-card').length, TOOL_LIST.length);
-  assert.equal(TOOL_LIST.length, 5);
+  assert.equal(TOOL_LIST.length, 7);
 });
 
 test('every tool opens without errors, including two of the same kind', async () => {
@@ -40,7 +40,7 @@ test('every tool opens without errors, including two of the same kind', async ()
     assert.ok(panel().children.length > 0);
   }
   await tick(60);
-  assert.equal(app.tabs.length, 5);
+  assert.equal(app.tabs.length, TOOL_LIST.length);
   assert.equal(elements.launcher.hidden, true);
 
   const first = app.addTab({ type: 'matrix' });
@@ -50,12 +50,12 @@ test('every tool opens without errors, including two of the same kind', async ()
   assert.equal(app.tabs.filter((t) => t.type === 'matrix').length, 3);
   app.closeTab(first.id, { undo: false });
   app.closeTab(second.id, { undo: false });
-  assert.equal(app.tabs.length, 5);
+  assert.equal(app.tabs.length, TOOL_LIST.length);
 });
 
 test('tab strip exposes tablist semantics and only one tab is selected', () => {
   const tabs = qa('[role=tab]', elements.tablist);
-  assert.equal(tabs.length, 5);
+  assert.equal(tabs.length, TOOL_LIST.length);
   assert.equal(tabs.filter((t) => t.getAttribute('aria-selected') === 'true').length, 1);
   assert.equal(tabs.filter((t) => t.tabIndex === 0).length, 1);
   const selected = tabs.find((t) => t.getAttribute('aria-selected') === 'true');
@@ -118,7 +118,7 @@ test('tab limit is enforced', () => {
   assert.equal(app.addTab({ type: 'graph' }), null);
   assert.equal(app.tabs.length, 24);
   for (const tab of extras) app.closeTab(tab.id, { undo: false });
-  assert.equal(app.tabs.length, 6);
+  assert.equal(app.tabs.length, TOOL_LIST.length + 1);
 });
 
 test('matrix tool multiplies and explains a selected entry', () => {

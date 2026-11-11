@@ -5,8 +5,9 @@
  * evaluated here: the parser produces an AST that `compile.js` turns into
  * closures, so the app never needs eval or Function.
  *
- * Node types: num, id, neg, bin, call, deriv, point, list, range, index,
- * listcomp, piece, abs, fact, deg, dot, cmp.
+ * Node types: num, id, neg, bin, call, deriv, ddx, point, list, range, index,
+ * listcomp, piece, abs, fact, deg, dot, cmp. A `point` has `z` set when it was
+ * written with three coordinates; only the 3D graph accepts those.
  */
 import { RESERVED_WORDS, isFunctionName, BINDERS } from './names.js';
 
@@ -62,7 +63,7 @@ const TOKEN = new RegExp(
     '\\s*(?:',
     // numbers; "1...10" must lex as 1, ..., 10
     '(\\d+(?:\\.(?!\\.)\\d*)?(?:[eE][+-]?\\d+)?|\\.\\d+(?:[eE][+-]?\\d+)?)',
-    '|([A-Za-z]+)',
+    '|([A-Za-z\\u03b1-\\u03c9]+)',
     "|(\\.\\.\\.|<=|>=|==|[-+*/^()\\[\\]{},:|'!=<>.\\u00b0])",
     ')',
   ].join(''),
@@ -308,7 +309,7 @@ class Parser {
       } else if (
         this.isOp('.') &&
         this.peek(1).type === 'id' &&
-        (this.peek(1).value === 'x' || this.peek(1).value === 'y')
+        (this.peek(1).value === 'x' || this.peek(1).value === 'y' || this.peek(1).value === 'z')
       ) {
         this.next();
         node = { type: 'dot', target: node, field: this.next().value };
@@ -367,9 +368,14 @@ class Parser {
         if (this.isOp(',')) {
           this.next();
           const second = this.nested(() => this.expr());
-          if (this.isOp(',')) throw new GraphSyntaxError('Points have two coordinates, like (2, 3)', this.peek().pos);
+          let third = null;
+          if (this.isOp(',')) {
+            this.next();
+            third = this.nested(() => this.expr());
+            if (this.isOp(',')) throw new GraphSyntaxError('Points have two or three coordinates', this.peek().pos);
+          }
           this.expectOp(')');
-          return { type: 'point', x: first, y: second };
+          return third ? { type: 'point', x: first, y: second, z: third } : { type: 'point', x: first, y: second };
         }
         this.expectOp(')', 'Check that every ( has a matching ).');
         first.grouped = true;
@@ -404,6 +410,12 @@ class Parser {
       const call = { type: 'call', name, args: this.args(), pos: t.pos };
       return exponent ? { type: 'bin', op: '^', left: call, right: exponent } : call;
     }
+    if (name === 'd' && this.startsDerivative()) {
+      this.next();
+      this.next();
+      const variable = this.next().value;
+      return { type: 'ddx', variable, arg: this.power(), pos: t.pos };
+    }
     let primes = 0;
     while (this.isOp("'")) {
       this.next();
@@ -415,6 +427,20 @@ class Parser {
     }
     if (this.isOp('(')) return { type: 'call', name, args: this.args(), pos: t.pos };
     return { type: 'id', name, pos: t.pos };
+  }
+
+  /** After a `d`: is this `/dx`, the derivative operator (`d/dx x^2`)? */
+  startsDerivative() {
+    const [slash, d, v] = [this.peek(0), this.peek(1), this.peek(2)];
+    return (
+      slash.type === 'op' &&
+      slash.value === '/' &&
+      d.type === 'id' &&
+      d.value === 'd' &&
+      v.type === 'id' &&
+      !isFunctionName(v.value) &&
+      v.value !== 'for'
+    );
   }
 
   /** Items of a list or range after "[" up to the closing bracket. */

@@ -12,6 +12,8 @@ A browser workspace for visualising mathematics. Open as many tabs as you like, 
 | **Matrices**          | Matrix × matrix and matrix × vector, one dot product at a time. For 2×2 maps it draws the transformed grid, unit square, and basis vectors. Drag the vector tip. |
 | **Complex functions** | Domain colouring of any f(z). Three colourings, pan and zoom, a value probe, and PNG export.                                                                     |
 | **Vector fields**     | Plot F = ⟨P, Q⟩ as arrows, magnitude shading, and animated flow. Click to trace trajectories. Divergence and curl are shown under the cursor.                    |
+| **3D graphing**       | Surfaces, implicit surfaces, space curves, parametric surfaces, and points. Orbit, pan, and zoom.                                                                |
+| **Notebook**          | Text, math, and graph cells in one document, sharing definitions.                                                                                                |
 | **Python turtle**     | Python with the `turtle` module, run in the browser. Presets for Koch, Sierpinski, dragon, tree, Hilbert, Lévy, Gosper, and Barnsley fern.                       |
 
 ![Complex functions](docs/images/complex.png)

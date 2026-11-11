@@ -6,8 +6,8 @@ Clover is a static site: HTML, CSS, and ES modules served as-is.
 index.html ── js/main.js ── core/app.js (App)
                               ├─ core/workspace.js   pure model, import/export validation
                               ├─ core/store.js       localStorage
-                              ├─ core/menu|dialog|toast.js
-                              └─ tools/index.js ── graph | matrix | complex | vectorfield | python
+                              ├─ core/menu|dialog|toast.js, mathfield.js, exprlist.js
+                              └─ tools/index.js ── graph | graph3d | notebook | matrix | complex | vectorfield | python
                                                     └─ lib/ expr, complexmath, viewport, domain, field, ...
 python tool ── postMessage ── runner/index.html (sandboxed iframe) ── vendor/skulpt
 ```
@@ -42,3 +42,9 @@ Skulpt needs `unsafe-eval`, so it lives in `runner/`, loaded in an iframe with `
 ## Testing
 
 Pure modules are unit tested directly. `tests/support/skulpt-harness.js` runs the vendored Skulpt build in jsdom with a recording canvas, and `tests/support/dom.js` mounts the whole app for smoke tests.
+
+## Typeset math, 3D, and notebooks
+
+- `lib/graph/typeset.js` turns text into a layout tree (tolerant of half-typed input) and renders it with `h()`. `core/mathfield.js` wraps an `<input>` so it shows typeset math when idle and a live preview while focused. `core/exprlist.js` is the shared row list (sliders, limits, errors) used by 3D and notebook cells.
+- `lib/graph3d/` holds the orbit `camera.js`, pure geometry in `mesh.js` (grid surfaces, marching tetrahedra, clipping to the unit cube), `model.js` (a `GraphModel` subclass), and a painter's-algorithm software renderer in `render.js`.
+- The notebook compiles all math and graph rows of every cell into one `GraphModel`, so definitions are shared; each graph cell draws only its own rows.

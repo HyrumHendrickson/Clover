@@ -78,7 +78,7 @@ test('syntax errors say what is wrong', () => {
   assert.match(message('sin x'), /needs parentheses/);
   assert.match(message('sin(x'), /matching \)/);
   assert.match(message('x @ y'), /Unexpected character "@"/);
-  assert.match(message('(1, 2, 3)'), /two coordinates/);
+  assert.match(message('(1, 2, 3, 4)'), /two or three coordinates/);
   assert.match(message('y = '), /ended unexpectedly/);
   assert.match(message('{x > 0}'), /piecewise/i);
   assert.match(message('y = x {x}'), /needs a comparison/);
@@ -434,7 +434,7 @@ test('degrees change what trigonometric rows mean', () => {
 });
 
 test('runtime errors are reported on the row instead of thrown', () => {
-  const { info } = build('L=[1,2]', 'M=[1,2,3]', 'L+M', 'y=L*x');
+  const { info } = build('L=[1,2]', 'M=[1,2,3]', 'L+M', 'y=L*M*x');
   assert.match(info(2).runtimeError, /same length/);
   assert.equal(info(2).valueText, '');
   assert.throws(() => info(3).plot.f(1), GraphEvalError, 'drawing catches this and shows it on the row');
@@ -534,4 +534,66 @@ test('typing anything never throws', () => {
       `input ${JSON.stringify(texts)}`,
     );
   }
+});
+
+/* ------------------------------------------------- lists in definitions, d/dx */
+
+test('a list inside a function definition draws one curve per item', () => {
+  const { info } = build('f(x) = [1, 2, 3]x');
+  const plot = info(0).plot;
+  assert.equal(plot.type, 'explicit');
+  assert.equal(plot.lanes.count(), 3);
+  assert.deepEqual(
+    [0, 1, 2].map((i) => plot.lanes.at(i)(2)),
+    [2, 4, 6],
+  );
+  assert.ok(Number.isNaN(plot.lanes.at(5)(2)), 'a missing curve is undefined, not an error');
+});
+
+test('lists work in plain equations, x = ..., and polar rows', () => {
+  const y = build('y = [1, 2]x + [0, 10]').info(0).plot;
+  assert.equal(y.lanes.count(), 2);
+  assert.equal(y.lanes.at(1)(1), 12);
+  assert.equal(build('x = [1, 2, 3]y').info(0).plot.lanes.count(), 3);
+  assert.equal(build('r = [1, 2]theta').info(0).plot.lanes.count(), 2);
+});
+
+test('a list that depends on a slider follows it', () => {
+  const { model, info } = build('n = 3', 'y = [1...n]x');
+  assert.equal(info(1).plot.lanes.count(), 3);
+  model.setSlider('r0', 5);
+  assert.equal(info(1).plot.lanes.count(), 5);
+});
+
+test('lists of curves are bounded and scalars still draw one curve', () => {
+  const huge = build('y = [1...200]x').info(0).plot;
+  assert.throws(() => huge.lanes.count(), GraphEvalError);
+  assert.equal(build('y = 2x').info(0).plot.lanes.count(), 1);
+  assert.equal(build('f(x) = x^2').info(0).plot.lanes.count(), 1);
+});
+
+test('d/dx differentiates numerically, inside functions and rows', () => {
+  close(evaluate('d/dx x^3', 2), 12, 1e-6);
+  close(evaluate('d/dx sin(x)', 0), 1, 1e-6);
+  close(evaluate('d/dx (x^2 + x)', 3), 7, 1e-6);
+  const { info, model } = build('f(x) = d/dx x^3', 'f(2)', 'y = d/dx x^2');
+  close(model.info('r1').value, 12, 1e-5);
+  assert.equal(info(2).kind, 'explicit');
+  close(info(2).plot.f(5), 10, 1e-6);
+});
+
+test('d/dx needs a variable it can differentiate', () => {
+  assert.match(build('a = 2', 'd/da a^2').info(1).error, /needs a to be a variable/);
+});
+
+test('Greek letters are single-letter names', () => {
+  const { info, model } = build('\u03b1 = 2', 'y = \u03b1x');
+  assert.equal(info(0).kind, 'var');
+  assert.equal(info(1).plot.f(3), 6);
+  assert.equal(model.info('r0').slider.value, 2);
+});
+
+test('three-coordinate points parse but are reported in the 2D graph', () => {
+  assert.equal(parseStatement('(1, 2, 3)').parts[0].z.type, 'num');
+  assert.match(build('(1, 2, 3)').info(0).error, /two coordinates/);
 });

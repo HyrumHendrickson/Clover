@@ -19,8 +19,8 @@ export const DEFAULT_SLIDER = { min: -10, max: 10 };
 const CONSTANT_NAMES = new Set(['e', 'pi', 'tau']);
 const KNOWN_ERRORS = [GraphSyntaxError, GraphCompileError, GraphEvalError];
 
-const isKnownError = (e) => KNOWN_ERRORS.some((type) => e instanceof type);
-const isId = (node, name) => node.type === 'id' && node.name === name;
+export const isKnownError = (e) => KNOWN_ERRORS.some((type) => e instanceof type);
+export const isId = (node, name) => node.type === 'id' && node.name === name;
 
 /** Is this value a point or a list of points (so it is drawn rather than printed)? */
 export function isPointValue(v) {
@@ -30,8 +30,8 @@ export function isPointValue(v) {
 
 /* ---------------------------------------------------------- classification */
 
-function functionHead(lhs) {
-  if (lhs.type !== 'call' || isFunctionName(lhs.name) || NOT_DEFINABLE.has(lhs.name)) return null;
+function functionHead(lhs, reserved) {
+  if (lhs.type !== 'call' || isFunctionName(lhs.name) || reserved.has(lhs.name)) return null;
   if (lhs.args.length === 0 || !lhs.args.every((a) => a.type === 'id' && !CONSTANT_NAMES.has(a.name))) return null;
   const params = lhs.args.map((a) => a.name);
   if (new Set(params).size !== params.length) {
@@ -41,19 +41,19 @@ function functionHead(lhs) {
 }
 
 /** Recognise `a = ...` and `f(x) = ...` definitions, which need no plotting variables. */
-function asDefinition(stmt) {
+function asDefinition(stmt, reserved) {
   if (stmt.ops.length !== 1 || stmt.ops[0] !== '=') return null;
   const [lhs, rhs] = stmt.parts;
-  const head = functionHead(lhs);
+  const head = functionHead(lhs, reserved);
   if (head) return { kind: 'fn', ...head, rhs, restrictions: stmt.restrictions };
   const isPolarR = lhs.type === 'id' && lhs.name === 'r' && namesUsed(rhs).has('theta');
-  if (lhs.type === 'id' && !NOT_DEFINABLE.has(lhs.name) && !isPolarR) {
+  if (lhs.type === 'id' && !reserved.has(lhs.name) && !isPolarR) {
     return { kind: 'var', name: lhs.name, rhs, restrictions: stmt.restrictions };
   }
   return null;
 }
 
-function extractDomain(conds, variable) {
+export function extractDomain(conds, variable) {
   const list = conds ?? [];
   for (let i = 0; i < list.length; i += 1) {
     const c = list[i];
@@ -129,7 +129,7 @@ const holds = (op, l, r) => {
   }
 };
 
-const mustBeNumber = (v, what) => {
+export const mustBeNumber = (v, what) => {
   if (typeof v !== 'number') {
     throw new GraphEvalError(
       `${what} must be a single number at each point, but this gives a ${Array.isArray(v) ? 'list' : 'point'}.`,
@@ -137,6 +137,69 @@ const mustBeNumber = (v, what) => {
   }
   return v;
 };
+
+/** Most curves one row may draw when its definition contains a list. */
+export const MAX_LANES = 50;
+const PROBES = [0.5, 1.5, -0.5, 2.5, 3.14159, -2.25, 0.1];
+
+/**
+ * Let a body that returns a list draw one curve per item, as Desmos does for
+ * `f(x) = [1, 2, 3]x`. `evalAt(u)` returns a number or a list. `count()` probes
+ * a few inputs to find how many curves there are and also clears the memo, so
+ * call it once at the start of every draw; `at(i)` is the scalar function of
+ * curve i. The memo means the list is built once per input, not once per curve.
+ */
+export function makeLanes(evalAt, what, scope) {
+  let memo = new Map();
+  let stamp = scope.version;
+  const value = (u) => {
+    if (stamp !== scope.version) {
+      memo = new Map();
+      stamp = scope.version;
+    }
+    let v = memo.get(u);
+    if (v === undefined) {
+      if (memo.size > 40000) memo = new Map();
+      v = evalAt(u);
+      memo.set(u, v);
+    }
+    return v;
+  };
+  const pick = (v, i) => {
+    if (Array.isArray(v)) {
+      const item = v[i];
+      if (item === undefined) return NaN;
+      return mustBeNumber(item, what);
+    }
+    return i === 0 ? mustBeNumber(v, what) : NaN;
+  };
+  return {
+    count() {
+      memo = new Map();
+      stamp = scope.version;
+      let n = 1;
+      for (const u of PROBES) {
+        let v;
+        try {
+          v = evalAt(u);
+        } catch (error) {
+          if (!(error instanceof GraphEvalError)) throw error;
+          continue;
+        }
+        if (Array.isArray(v)) {
+          n = v.length;
+          break;
+        }
+        if (typeof v === 'number' && Number.isFinite(v)) break;
+      }
+      if (n > MAX_LANES) {
+        throw new GraphEvalError(`A list can graph at most ${MAX_LANES} curves at once; this one has ${n}.`);
+      }
+      return Math.max(1, n);
+    },
+    at: (i) => (u) => pick(value(u), i),
+  };
+}
 
 function compilePlot(cls, scope, row, info, tIsParameter) {
   const plotVars = {
@@ -194,12 +257,18 @@ function compilePlot(cls, scope, row, info, tIsParameter) {
     case 'explicit': {
       const body = compileNode(cls.rhs, cx);
       const env = cx.newEnv();
+      const lanes = makeLanes(
+        (x) => {
+          env[0] = x;
+          return body(env);
+        },
+        'A graph y = ...',
+        scope,
+      );
       plot = {
         type: 'explicit',
-        f: (x) => {
-          env[0] = x;
-          return mustBeNumber(body(env), 'A graph y = ...');
-        },
+        f: lanes.at(0),
+        lanes,
         mask: cond
           ? (x, y) => {
               env[0] = x;
@@ -213,12 +282,18 @@ function compilePlot(cls, scope, row, info, tIsParameter) {
     case 'explicitX': {
       const body = compileNode(cls.rhs, cx);
       const env = cx.newEnv();
+      const lanes = makeLanes(
+        (y) => {
+          env[1] = y;
+          return body(env);
+        },
+        'A graph x = ...',
+        scope,
+      );
       plot = {
         type: 'explicitX',
-        f: (y) => {
-          env[1] = y;
-          return mustBeNumber(body(env), 'A graph x = ...');
-        },
+        f: lanes.at(0),
+        lanes,
         mask: cond
           ? (x, y) => {
               env[0] = x;
@@ -290,13 +365,19 @@ function compilePlot(cls, scope, row, info, tIsParameter) {
     case 'polar': {
       const body = compileNode(cls.rhs, cx);
       const env = cx.newEnv();
+      const lanes = makeLanes(
+        (theta) => {
+          env[3] = theta;
+          return body(env);
+        },
+        'A polar graph r = ...',
+        scope,
+      );
       plot = {
         type: 'polar',
         domain,
-        f: (theta) => {
-          env[3] = theta;
-          return mustBeNumber(body(env), 'A polar graph r = ...');
-        },
+        f: lanes.at(0),
+        lanes,
         mask: cond
           ? (theta, r) => {
               env[3] = theta;
@@ -356,7 +437,7 @@ function blankInfo(row) {
   };
 }
 
-function fail(info, error) {
+export function fail(info, error) {
   if (!isKnownError(error)) throw error;
   info.kind = 'error';
   info.error = error.message;
@@ -376,6 +457,10 @@ function constantBound(text, fallback) {
  */
 export class GraphModel {
   constructor() {
+    /** Names a row may not define; the 3D graph also reserves z. */
+    this.reserved = NOT_DEFINABLE;
+    /** 2 for the graphing tool, 3 for the 3D graph (which accepts (x, y, z) points). */
+    this.dimensions = 2;
     this.scope = new Scope('rad');
     /** @type {Map<string, ReturnType<typeof blankInfo>>} */
     this.infos = new Map();
@@ -404,7 +489,7 @@ export class GraphModel {
       if ((row.text ?? '').trim() === '') continue;
       try {
         const stmt = parseStatement(row.text);
-        const def = asDefinition(stmt);
+        const def = asDefinition(stmt, this.reserved);
         const plan = { row, info, stmt, def };
         pending.push(plan);
         this.plansById.set(row.id, plan);
@@ -456,13 +541,13 @@ export class GraphModel {
             throw new GraphCompileError(
               'A variable cannot have a restriction. Define a function instead, like f(x) = ...',
             );
-          const cx = new Ctx(this.scope);
+          const cx = new Ctx(this.scope, { dimensions: this.dimensions });
           plan.body = compileNode(def.rhs, cx);
           plan.env = cx.newEnv();
           plan.refs = cx.refs;
           plan.undefinedNames = cx.undefinedNames;
         } else {
-          const cx = new Ctx(this.scope, { firstSlot: def.params.length });
+          const cx = new Ctx(this.scope, { firstSlot: def.params.length, dimensions: this.dimensions });
           def.params.forEach((p, i) => cx.locals.set(p, i));
           const body = compileNode(def.rhs, cx);
           const cond = def.restrictions ? compileConditions(def.restrictions, cx) : null;
@@ -589,11 +674,8 @@ export class GraphModel {
     if (plan.def.kind === 'fn') {
       if (plan.entry.arity === 1) {
         const entry = plan.entry;
-        info.plot = {
-          type: 'explicit',
-          f: (x) => mustBeNumber(entry.call1(x), `${entry.name}(x)`),
-          mask: null,
-        };
+        const lanes = makeLanes((x) => entry.call1(x), `${entry.name}(x)`, this.scope);
+        info.plot = { type: 'explicit', f: lanes.at(0), lanes, mask: null };
       }
       return;
     }
@@ -628,6 +710,7 @@ export class GraphModel {
     if (!plan?.cell || !plan.info.slider || !Number.isFinite(value)) return false;
     plan.cell.value = value;
     plan.info.slider.value = value;
+    this.scope.version += 1;
     this.refresh();
     return true;
   }

@@ -1,0 +1,79 @@
+/* 3D graph. Layout, rows, and settings reuse the graphing tool's classes. */
+
+.graph3d-tool .g3-canvas {
+  cursor: grab;
+}
+
+.graph3d-tool .g3-canvas.is-grabbing {
+  cursor: grabbing;
+}
+
+.g3-status {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  max-width: 80%;
+  margin: 0;
+  padding: 8px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  color: var(--text-muted);
+  font-size: 13px;
+  text-align: center;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.g3-preset {
+  min-height: 36px;
+  min-width: 84px;
+  border: 0;
+  background: transparent;
+}
+
+.g3-bounds {
+  grid-template-columns: 1fr 1fr 1fr;
+}
+
+.g3-bounds .btn {
+  grid-column: 1 / -1;
+  justify-self: start;
+}
+
+/* ------------------------------------------------- rows shared by 3D and notebook */
+
+.gr-domains {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.gr-hint {
+  margin: 2px 0 0 8px;
+  color: var(--text-muted);
+  font-size: 12.5px;
+  line-height: 1.4;
+}
+
+.gr-compact .gr-row {
+  grid-template-columns: 12px minmax(0, 1fr) auto;
+  border-bottom: 0;
+}
+
+.gr-compact .gr-actions {
+  display: none;
+}
+
+.gr-dot-none {
+  display: block;
+  width: 4px;
+  height: 26px;
+  margin: 5px 0 0 6px;
+  border-radius: 2px;
+  background: var(--surface-3);
+}
+
+.gr-compact .gr-row.is-current .gr-dot-none {
+  background: var(--accent);
+}
