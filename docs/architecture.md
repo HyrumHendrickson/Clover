@@ -56,3 +56,13 @@ Pure modules are unit tested directly. `tests/support/skulpt-harness.js` runs th
 - `lib/graph/typeset.js` turns text into a layout tree (tolerant of half-typed input) and renders it with `h()`. `core/mathfield.js` wraps an `<input>` so it shows typeset math when idle and a live preview while focused. `core/exprlist.js` is the shared row list (sliders, limits, errors) used by 3D and notebook cells.
 - `lib/graph3d/` holds the orbit `camera.js`, pure geometry in `mesh.js` (grid surfaces, marching tetrahedra, clipping to the unit cube), `model.js` (a `GraphModel` subclass), and a painter's-algorithm software renderer in `render.js`.
 - The notebook compiles all math and graph rows of every cell into one `GraphModel`, so definitions are shared; each graph cell draws only its own rows.
+
+## Python sessions, automata, and other sandboxed frames
+
+`runner/runner.js` speaks three protocols: one-shot programs (the turtle tab), a session whose globals persist from cell to cell (notebook Python cells; Skulpt is run through `Sk.compile` against one shared namespace), and cellular automaton rules (`ca-load`, `ca-step`; the frame loops over the grid and calls the Python `rule`). `lib/pyframe.js` owns the iframe and accepts messages only from it. Removing a frame is the only way to stop Python, so Stop and Restart also forget variables.
+
+`runner/latex.html` is a separate sandboxed frame, with its own CSP, that loads the vendored Siglum engine (TeX Live in WebAssembly) and a worker made from a blob. It receives a project (`compile`) and returns a PDF. `lib/latexproject.js` validates projects and `js/tools/latex.js` is the editor.
+
+## Symbolic algebra
+
+`lib/cas.js` parses Maxima syntax and simplifies with exact rationals: a canonical sum and product form, expansion, differentiation, integration by linearity and by parts for polynomial times exponential or trigonometric terms, and polynomial solving up to degree 2. Unsupported input raises `CasError` rather than guessing.

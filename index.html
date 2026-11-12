@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; frame-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; frame-src 'self' blob:; object-src 'none'; base-uri 'none'; form-action 'none'"
     />
     <meta name="referrer" content="strict-origin-when-cross-origin" />
     <title>Clover — mathematics workspace</title>
@@ -26,6 +26,7 @@
     <link rel="stylesheet" href="css/notebook.css" />
     <link rel="stylesheet" href="css/geometry.css" />
     <link rel="stylesheet" href="css/matrix.css" />
+    <link rel="stylesheet" href="css/lab.css" />
   </head>
   <body>
     <a class="skip-link" href="#panels">Skip to workspace</a>

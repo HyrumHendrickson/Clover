@@ -6,6 +6,25 @@ All notable changes are documented here. The format follows [Keep a Changelog](h
 
 ### Added
 
+- A Cellular automata tab: grids that evolve by a rule written in Python, with any number of colours. Click cells to paint, then play, pause, step, or step back. Presets include Conway's Game of Life, a glider gun, a forest fire, Wireworld, Brian's Brain, and a cyclic rock-paper-scissors rule.
+- A Fractals tab: the Mandelbrot and Julia sets, the Burning Ship, the tricorn, and a Newton fractal, with pan, zoom, palettes, and a way to pick a Julia set from the Mandelbrot set.
+- A LaTeX tab: several files and pictures per project, source on the left and the compiled PDF on the right. TeX Live runs in WebAssembly (vendored Siglum engine) inside a sandboxed frame and downloads packages on demand.
+- A Symbolic algebra tab with a built-in engine that reads Maxima syntax: expand, diff, integrate, solve up to degree 2, subst, ev, factor for whole numbers, float, function definitions, and earlier results. It is not the full Maxima program.
+- Notebook cells for Python and Python canvas. Variables and functions defined in one Python cell are visible in the others until the session is restarted.
+- Python turtle presets: Monty Hall, pairs of dice, and two stars in orbit.
+- Linear algebra: `eig`, `eigenvalues`, and `eigenvectors`, exact for rational matrices. Click any line to see it drawn: vectors (drag the tip to edit), what a 2 by 2 or 3 by 3 matrix does, and `A*x` as x turned and scaled by A.
+
+### Changed
+
+- The Matrices tab is now called Linear algebra. Saved files are unaffected.
+- The notebook offers Python cells instead of embedding the Python tool. Existing embedded Python tools keep working.
+- Clover is now released under the GNU General Public License, version 2, the same license as Maxima. Earlier releases were published under the MIT license.
+- The file format is version 5.
+
+### Fixed
+
+- On the Statistics tab, the chart no longer covers part of the control panel.
+
 - A Statistics tab: data columns (paste from a spreadsheet), summaries with histogram, box plot, and dot plot, regression (linear, quadratic, cubic, exponential, power, logarithmic) with R² and residuals, probability distributions with shaded probabilities and inverse values, and t, z, proportion, and chi-square tests.
 - Tables in the Graphing and 3D tools: typed columns define lists, computed columns fill themselves, spreadsheet paste, and per-column dots, lines, and colour.
 - Folders that collapse, hide, and group rows; rows can be moved with Alt+Arrow or the options menu.

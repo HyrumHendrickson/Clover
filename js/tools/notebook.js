@@ -1,4 +1,5 @@
 import { h, onResize, uid } from '../core/dom.js';
+import { createCodeEditor } from '../core/codeeditor.js';
 import { createExprList, emptyRow, normalizeRows } from '../core/exprlist.js';
 import { icon } from '../core/icons.js';
 import { openMenu } from '../core/menu.js';
@@ -6,6 +7,7 @@ import { renderGraph, rowColor } from '../lib/graph/draw.js';
 import { GraphModel } from '../lib/graph/model.js';
 import { GraphView, normalizeGraphView } from '../lib/graph/view.js';
 import { attachPanZoom } from '../lib/interact.js';
+import { PythonFrame, isPngDataUrl } from '../lib/pyframe.js';
 import { MAX_MARKDOWN, renderMarkdown } from '../lib/markdown.js';
 import { fitCanvas, themeColors } from '../lib/viewport.js';
 import { embeddableTools, getTool } from './registry.js';
@@ -15,9 +17,31 @@ const MAX_GRAPHS = 10;
 const MAX_GRAPH_ROWS = 24;
 const ID_PATTERN = /^[A-Za-z0-9_-]{1,24}$/;
 const DEFAULT_VIEW = { cx: 0, cy: 0, xspan: 20, yspan: 0 };
-const MAX_EMBEDS = 8;
+const MAX_EMBEDS = 16;
 const EMBED_HEIGHT = { min: 220, max: 1000, initial: 460 };
-const KINDS = new Set(['text', 'math', 'graph', 'embed']);
+const MAX_CODE_CELLS = 30;
+const MAX_CODE = 20000;
+const MAX_OUTPUT = 12000;
+const KINDS = new Set(['text', 'math', 'graph', 'embed', 'code', 'pycanvas']);
+const STARTER_CODE = `# Variables and functions stay defined in later Python cells until you restart the session.
+x = 3
+
+def square(n):
+    return n * n
+
+print(square(x))
+`;
+const STARTER_CANVAS = `# A canvas cell draws with turtle, and can use anything defined in earlier Python cells.
+import turtle
+
+t = turtle.Turtle()
+t.hideturtle()
+t.speed(0)
+for i in range(36):
+    t.forward(120)
+    t.left(170)
+`;
+const isCode = (cell) => cell.type === 'code' || cell.type === 'pycanvas';
 /** Row kinds that draw something, as opposed to defining or computing a value. */
 const PLOTTED = new Set(['explicit', 'explicitX', 'implicit', 'ineq', 'polar', 'param']);
 
@@ -26,6 +50,7 @@ const PLOTTED = new Set(['explicit', 'explicitX', 'implicit', 'ineq', 'polar', '
 function normalizeCell(raw, taken, counts) {
   if (!raw || typeof raw !== 'object' || !KINDS.has(raw.type)) return null;
   if (raw.type === 'graph' && counts.graph >= MAX_GRAPHS) return null;
+  if ((raw.type === 'code' || raw.type === 'pycanvas') && counts.code >= MAX_CODE_CELLS) return null;
   if (raw.type === 'embed') {
     const tool = getTool(raw.tool);
     if (!tool || tool.type === 'notebook' || counts.embed >= MAX_EMBEDS) return null;
@@ -38,6 +63,10 @@ function normalizeCell(raw, taken, counts) {
   counts.n += 1;
   if (raw.type === 'text') {
     return { id, type: 'text', text: typeof raw.text === 'string' ? raw.text.slice(0, MAX_MARKDOWN) : '' };
+  }
+  if (raw.type === 'code' || raw.type === 'pycanvas') {
+    counts.code += 1;
+    return { id, type: raw.type, code: typeof raw.code === 'string' ? raw.code.slice(0, MAX_CODE) : '' };
   }
   if (raw.type === 'embed') {
     const tool = getTool(raw.tool);
@@ -96,7 +125,7 @@ const starter = () => [
 
 function normalize(raw) {
   const taken = new Set();
-  const counts = { n: 0, graph: 0, embed: 0, rows: new Set() };
+  const counts = { n: 0, graph: 0, embed: 0, code: 0, rows: new Set() };
   const entries = Array.isArray(raw?.cells) ? raw.cells.slice(0, MAX_CELLS) : [];
   const cells = entries.map((c) => normalizeCell(c, taken, counts)).filter(Boolean);
   if (cells.length === 0) {
@@ -104,6 +133,7 @@ function normalize(raw) {
     counts.rows.clear();
     counts.graph = 0;
     counts.embed = 0;
+    counts.code = 0;
     for (const c of starter()) cells.push(normalizeCell(c, taken, counts));
   }
   return { cells, angle: raw?.angle === 'deg' ? 'deg' : 'rad' };
@@ -118,7 +148,11 @@ const kindLabel = (cell) =>
       ? 'Math'
       : cell.type === 'embed'
         ? (getTool(cell.tool)?.name ?? 'Tool')
-        : 'Graph';
+        : cell.type === 'code'
+          ? 'Python'
+          : cell.type === 'pycanvas'
+            ? 'Python canvas'
+            : 'Graph';
 
 const cellRows = (cell) => (cell.type === 'math' ? [cell.row] : cell.type === 'graph' ? cell.rows : []);
 
@@ -226,6 +260,10 @@ export default {
         ctx.notify(`A notebook can have up to ${MAX_GRAPHS} graphs. Delete one to add another.`);
         return null;
       }
+      if ((type === 'code' || type === 'pycanvas') && state.cells.filter(isCode).length >= MAX_CODE_CELLS) {
+        ctx.notify(`A notebook can have up to ${MAX_CODE_CELLS} Python cells. Delete one to add another.`);
+        return null;
+      }
       if (type === 'embed') {
         if (!getTool(tool) || tool === 'notebook') return null;
         if (state.cells.filter((c) => c.type === 'embed').length >= MAX_EMBEDS) {
@@ -239,17 +277,25 @@ export default {
       const cell =
         type === 'text'
           ? { id, type, text: '' }
-          : type === 'math'
-            ? { id, type, row: emptyRow(rowId(), state.cells.length % 6) }
-            : type === 'embed'
-              ? {
-                  id,
-                  type,
-                  tool,
-                  height: EMBED_HEIGHT.initial,
-                  state: getTool(tool).normalize(getTool(tool).defaultState()),
-                }
-              : { id, type, rows: [emptyRow(rowId(), state.cells.length % 6)], view: { ...DEFAULT_VIEW }, grid: true };
+          : type === 'code' || type === 'pycanvas'
+            ? { id, type, code: type === 'code' ? STARTER_CODE : STARTER_CANVAS }
+            : type === 'math'
+              ? { id, type, row: emptyRow(rowId(), state.cells.length % 6) }
+              : type === 'embed'
+                ? {
+                    id,
+                    type,
+                    tool,
+                    height: EMBED_HEIGHT.initial,
+                    state: getTool(tool).normalize(getTool(tool).defaultState()),
+                  }
+                : {
+                    id,
+                    type,
+                    rows: [emptyRow(rowId(), state.cells.length % 6)],
+                    view: { ...DEFAULT_VIEW },
+                    grid: true,
+                  };
       const at = afterId === null ? state.cells.length : indexOf(afterId) + 1;
       state.cells.splice(at, 0, cell);
       rebuildCells();
@@ -629,22 +675,216 @@ export default {
       };
     }
 
+    /* -------------------------------------------------------- Python session */
+
+    const kernelHost = h('div', { class: 'nb-kernel-host' });
+    /** What each Python cell last printed or drew. Not saved with the notebook. */
+    const outputs = new Map();
+    const outputViews = new Map();
+    const queue = [];
+    let current = null;
+
+    const outputOf = (id) => {
+      let o = outputs.get(id);
+      if (!o) {
+        o = { status: 'idle', text: [], image: null };
+        outputs.set(id, o);
+      }
+      return o;
+    };
+    const refreshOutput = (id) => outputViews.get(id)?.();
+
+    const kernel = new PythonFrame(kernelHost, {
+      title: 'Python session',
+      offscreen: true,
+      onFailure: (message) => failCurrent(message),
+      onMessage: (data) => {
+        if (typeof data.id !== 'string' || data.id !== current) return;
+        const o = outputOf(current);
+        if (data.type === 'stdout' && typeof data.text === 'string') {
+          o.text.push({ text: data.text.slice(0, 4000), error: false });
+        } else if (data.type === 'frame' && isPngDataUrl(data.dataUrl)) {
+          o.image = data.dataUrl;
+        } else if (data.type === 'cell-done') {
+          finish('done');
+        } else if (data.type === 'cell-error' && typeof data.message === 'string') {
+          o.text.push({ text: `${data.message.slice(0, 2000)}\n`, error: true });
+          finish('error');
+        }
+        refreshOutput(data.id);
+      },
+    });
+
+    function finish(status) {
+      if (current === null) return;
+      const id = current;
+      outputOf(id).status = status;
+      current = null;
+      refreshOutput(id);
+      pump();
+    }
+
+    function failCurrent(message) {
+      if (current === null) return;
+      outputOf(current).text.push({ text: `${message}\n`, error: true });
+      finish('error');
+    }
+
+    function pump() {
+      if (current !== null) return;
+      while (queue.length) {
+        const id = queue.shift();
+        const cell = state.cells.find((c) => c.id === id);
+        if (!cell || !isCode(cell)) continue;
+        const o = outputOf(id);
+        o.status = 'running';
+        o.text = [];
+        if (cell.type === 'pycanvas') o.image = null;
+        current = id;
+        refreshOutput(id);
+        kernel.post({ type: 'cell', id, code: cell.code, canvas: cell.type === 'pycanvas' });
+        return;
+      }
+    }
+
+    function runCode(id) {
+      if (current === id || queue.includes(id)) return;
+      outputOf(id).status = 'queued';
+      queue.push(id);
+      refreshOutput(id);
+      pump();
+    }
+
+    function runAll() {
+      for (const cell of state.cells) if (isCode(cell)) runCode(cell.id);
+    }
+
+    /** Stop everything and forget every variable: removing the frame is the only way to interrupt Python. */
+    function restartSession() {
+      kernel.stop();
+      queue.length = 0;
+      if (current !== null) {
+        const id = current;
+        current = null;
+        const o = outputOf(id);
+        o.text.push({ text: 'Stopped.\n', error: true });
+        o.status = 'stopped';
+        refreshOutput(id);
+      }
+      for (const [id, o] of outputs)
+        if (o.status === 'queued') {
+          o.status = 'idle';
+          refreshOutput(id);
+        }
+      ctx.notify('Python session restarted. Variables defined in earlier cells are forgotten.', 'info');
+    }
+
+    const STATUS_TEXT = {
+      idle: '',
+      queued: 'Waiting\u2026',
+      running: 'Running\u2026',
+      done: 'Finished',
+      error: 'Stopped by an error',
+      stopped: 'Stopped',
+    };
+
+    function buildCode(cell, label) {
+      const canvasCell = cell.type === 'pycanvas';
+      const editor = createCodeEditor({
+        value: cell.code,
+        label: `${label}, Python`,
+        maxLength: MAX_CODE,
+        minLines: 3,
+        maxLines: 24,
+        onInput: (value) => {
+          cell.code = value;
+          ctx.save();
+        },
+        onRun: () => runCode(cell.id),
+      });
+      const status = h('span', { class: 'nb-code-status', role: 'status' });
+      const console_ = h('pre', {
+        class: 'py-console nb-code-output',
+        role: 'log',
+        'aria-label': `${label} output`,
+        hidden: true,
+      });
+      const image = h('img', { class: 'nb-code-image', alt: `Drawing from ${label}`, hidden: true });
+      const run = h(
+        'button',
+        { class: 'btn btn-small btn-primary', type: 'button', onclick: () => runCode(cell.id) },
+        icon('play', 12),
+        ' Run',
+      );
+      const stop = h(
+        'button',
+        { class: 'btn btn-small', type: 'button', hidden: true, onclick: restartSession },
+        icon('stop', 12),
+        ' Stop',
+      );
+      const refresh = () => {
+        const o = outputOf(cell.id);
+        status.textContent = STATUS_TEXT[o.status];
+        status.dataset.state = o.status;
+        stop.hidden = !(o.status === 'running');
+        console_.hidden = o.text.length === 0;
+        console_.replaceChildren(...o.text.map((t) => h('span', { class: t.error ? 'py-error' : null }, t.text)));
+        while (console_.textContent.length > MAX_OUTPUT && console_.firstChild) console_.firstChild.remove();
+        console_.scrollTop = console_.scrollHeight;
+        if (canvasCell) {
+          image.hidden = !o.image;
+          if (o.image) image.src = o.image;
+        }
+      };
+      outputViews.set(cell.id, refresh);
+      refresh();
+      const body = h(
+        'div',
+        { class: 'nb-body nb-code' },
+        editor.el,
+        h(
+          'div',
+          { class: 'nb-code-actions' },
+          run,
+          stop,
+          status,
+          h('span', { class: 'tool-note' }, 'Ctrl+Enter or Shift+Enter runs this cell'),
+        ),
+        canvasCell ? image : null,
+        console_,
+      );
+      return {
+        el: cellChrome(cell, label, body),
+        destroy() {
+          outputViews.delete(cell.id);
+        },
+        render() {},
+        syncAll() {},
+        pause() {},
+        resume: () => editor.syncScroll(),
+        focus: () => editor.focus(),
+      };
+    }
+
     function buildCell(cell, index) {
       const label = `${kindLabel(cell)} cell ${index + 1}`;
       if (cell.type === 'text') return buildText(cell, label);
       if (cell.type === 'math') return buildMath(cell, label);
       if (cell.type === 'embed') return buildEmbed(cell, label);
+      if (isCode(cell)) return buildCode(cell, label);
       return buildGraph(cell, label);
     }
 
     function embedMenu(anchor, afterId) {
       openMenu(
         anchor,
-        embeddableTools().map((tool) => ({
-          label: tool.name,
-          icon: `tool-${tool.type}`,
-          onSelect: () => insertCell('embed', afterId, { tool: tool.type }),
-        })),
+        embeddableTools()
+          .filter((tool) => tool.type !== 'python')
+          .map((tool) => ({
+            label: tool.name,
+            icon: `tool-${tool.type}`,
+            onSelect: () => insertCell('embed', afterId, { tool: tool.type }),
+          })),
       );
     }
 
@@ -659,6 +899,18 @@ export default {
             icon('plus', 12),
             type === 'text' ? 'Text' : type === 'math' ? 'Math' : 'Graph',
           ),
+        ),
+        h(
+          'button',
+          { class: 'btn btn-quiet btn-small', type: 'button', onclick: () => insertCell('code', afterId) },
+          icon('plus', 12),
+          'Python',
+        ),
+        h(
+          'button',
+          { class: 'btn btn-quiet btn-small', type: 'button', onclick: () => insertCell('pycanvas', afterId) },
+          icon('plus', 12),
+          'Python canvas',
         ),
         h(
           'button',
@@ -728,6 +980,18 @@ export default {
       ),
       h(
         'button',
+        { class: 'btn btn-small', type: 'button', onclick: () => insertCell('code') },
+        icon('plus', 14),
+        'Python',
+      ),
+      h(
+        'button',
+        { class: 'btn btn-small', type: 'button', onclick: () => insertCell('pycanvas') },
+        icon('plus', 14),
+        'Python canvas',
+      ),
+      h(
+        'button',
         {
           class: 'btn btn-small',
           type: 'button',
@@ -738,11 +1002,23 @@ export default {
         'Embed a tool',
       ),
       h('span', { class: 'nb-spacer' }),
+      h('button', { class: 'btn btn-small', type: 'button', onclick: runAll }, icon('play', 12), 'Run all Python'),
+      h(
+        'button',
+        {
+          class: 'btn btn-small',
+          type: 'button',
+          title: 'Stop Python and forget every variable',
+          onclick: restartSession,
+        },
+        icon('reset', 12),
+        'Restart Python',
+      ),
       h('label', { class: 'field' }, h('span', { class: 'field-label' }, 'Angles'), angle),
     );
 
     root.classList.add('tool', 'notebook-tool');
-    root.append(h('div', { class: 'nb-page' }, toolbar, container));
+    root.append(h('div', { class: 'nb-page' }, toolbar, container, kernelHost));
 
     const stopObserving = onResize(container, () => scheduleRender());
     const onTheme = () => {
@@ -771,6 +1047,7 @@ export default {
         for (const instance of instances.values()) instance.destroy();
         for (const entry of embedHosts.values()) closeEmbed(entry);
         embedHosts.clear();
+        kernel.destroy();
         stopObserving();
         document.removeEventListener('clover:themechange', onTheme);
       },

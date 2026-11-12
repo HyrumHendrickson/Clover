@@ -4,7 +4,7 @@
   "description": "A browser workspace for visualising mathematics: graphs, matrices, complex functions, vector fields, and Python turtle fractals.",
   "private": true,
   "type": "module",
-  "license": "MIT",
+  "license": "GPL-2.0-only",
   "engines": {
     "node": ">=22"
   },

@@ -219,20 +219,21 @@ function embed(label) {
   item.click();
 }
 
-test('the embed menu offers every tool except the notebook itself', () => {
+// The Python tool is offered as two notebook cell types instead, so that cells can share one session.
+const embeddable = () => Object.values(TOOLS).filter((t) => t.type !== 'notebook' && t.type !== 'python');
+
+test('the embed menu offers every tool except the notebook and Python, which have their own cells', () => {
   addButton('Embed a tool').click();
   const labels = menuItems().map((b) => b.textContent);
   assert.deepEqual(
     labels,
-    Object.values(TOOLS)
-      .filter((t) => t.type !== 'notebook')
-      .map((t) => t.name),
+    embeddable().map((t) => t.name),
   );
   document.body.querySelector('.menu')?.remove();
 });
 
 test('any other tool can be embedded, and edits inside it are saved with the notebook', async () => {
-  embed('Matrices');
+  embed('Linear algebra');
   const cell = tab.state.cells.at(-1);
   assert.equal(cell.type, 'embed');
   assert.equal(cell.tool, 'matrix');
@@ -258,16 +259,12 @@ test('every embeddable tool opens inside a notebook without errors', async () =>
   qa('button', cells()[0])
     .find((b) => b.title === 'Delete cell')
     .click();
-  const names = Object.values(TOOLS)
-    .filter((t) => t.type !== 'notebook')
-    .map((t) => t.name);
+  const names = embeddable().map((t) => t.name);
   for (const name of names) embed(name);
   assert.equal(embedCells().length, names.length);
   assert.deepEqual(
     tab.state.cells.filter((c) => c.type === 'embed').map((c) => c.tool),
-    Object.values(TOOLS)
-      .filter((t) => t.type !== 'notebook')
-      .map((t) => t.type),
+    embeddable().map((t) => t.type),
   );
   assert.equal(qa('.nb-embed-error').length, 0);
   assert.equal(qa('.nb-embed-host').length, names.length);
@@ -294,11 +291,11 @@ test('a notebook limits embedded tools and never embeds a notebook', () => {
       { type: 'embed', id: 'c', tool: 'constructor' },
       { type: 'embed', id: 'big', tool: 'graph', height: 1e9, state: 'garbage' },
       { type: 'embed', id: 'small', tool: 'geometry', height: -5, state: { rows: 7 } },
-      ...Array.from({ length: 12 }, (_, i) => matrix(`m${i}`)),
+      ...Array.from({ length: 20 }, (_, i) => matrix(`m${i}`)),
     ],
   });
   const embeds = state.cells.filter((c) => c.type === 'embed');
-  assert.equal(embeds.length, 8, 'at most eight embedded tools');
+  assert.equal(embeds.length, 16, 'at most sixteen embedded tools');
   assert.deepEqual(
     embeds.slice(0, 2).map((c) => [c.tool, c.height]),
     [
@@ -325,4 +322,74 @@ test('the launcher preview draws without errors', () => {
   assert.doesNotThrow(() =>
     notebook.preview(c, { bg: '#fff', grid: '#ddd', axis: '#999', text: '#555', ink: '#111', a: '#2563eb' }),
   );
+});
+
+/* Python cells: one session shared by every code and canvas cell. */
+
+test('Python cells share one sandboxed session and show output where each cell ran', async () => {
+  while (tab.state.cells.length > 0) {
+    const del = qa('button', cells()[0]).find((b) => b.title === 'Delete cell');
+    del.click();
+    if (tab.state.cells.length === 1 && tab.state.cells[0].type !== 'embed') break;
+  }
+  addButton('Python').click();
+  addButton('Python canvas').click();
+  const kinds = tab.state.cells.map((c) => c.type);
+  assert.ok(kinds.includes('code') && kinds.includes('pycanvas'));
+  assert.equal(q('iframe'), null, 'no Python runs until a cell is run');
+
+  const codeCell = tab.state.cells.find((c) => c.type === 'code');
+  const canvasCell = tab.state.cells.find((c) => c.type === 'pycanvas');
+  const el = (cell) => q(`[data-cell="${cell.id}"]`);
+  const run = (cell) =>
+    qa('button', el(cell))
+      .find((b) => b.textContent.trim() === 'Run')
+      .click();
+
+  run(codeCell);
+  const frame = q('iframe');
+  assert.ok(frame, 'running a cell starts the session');
+  assert.equal(frame.getAttribute('sandbox'), 'allow-scripts');
+  const posted = [];
+  frame.contentWindow.postMessage = (m) => posted.push(m);
+  const send = (data, source = frame.contentWindow) =>
+    window.dispatchEvent(new window.MessageEvent('message', { data, source }));
+  send({ type: 'ready' });
+  assert.deepEqual(posted[0], { type: 'cell', id: codeCell.id, code: codeCell.code, canvas: false });
+
+  send({ type: 'stdout', id: codeCell.id, text: '9\n' });
+  send({ type: 'stdout', id: canvasCell.id, text: 'wrong cell\n' });
+  send({ type: 'stdout', id: codeCell.id, text: 'from an impostor\n' }, window);
+  assert.match(q('.nb-code-output', el(codeCell)).textContent, /^9/);
+  assert.doesNotMatch(el(codeCell).textContent, /impostor|wrong cell/);
+
+  run(canvasCell);
+  assert.equal(posted.length, 1, 'the second cell waits for the first to finish');
+  send({ type: 'cell-done', id: codeCell.id });
+  assert.equal(posted[1].canvas, true, 'canvas cells ask for turtle drawing');
+  assert.equal(posted[1].id, canvasCell.id);
+  send({ type: 'frame', id: canvasCell.id, dataUrl: 'javascript:alert(1)' });
+  assert.equal(q('.nb-code-image', el(canvasCell)).hidden, true, 'only PNG data URLs are shown');
+  send({ type: 'frame', id: canvasCell.id, dataUrl: 'data:image/png;base64,AAAA' });
+  assert.equal(q('.nb-code-image', el(canvasCell)).hidden, false);
+  send({ type: 'cell-error', id: canvasCell.id, message: 'NameError: name y is not defined on line 1' });
+  assert.match(q('.nb-code-output .py-error', el(canvasCell)).textContent, /NameError/);
+
+  const restart = qa('.nb-toolbar button').find((b) => b.textContent.includes('Restart Python'));
+  restart.click();
+  assert.equal(q('iframe'), null, 'restarting removes the frame, which forgets every variable');
+});
+
+test('Python cells are saved with the notebook and hostile cells are cleaned', () => {
+  const state = notebook.normalize({
+    cells: [
+      { type: 'code', id: 'a', code: 'print(1)' },
+      { type: 'pycanvas', id: 'b', code: 5 },
+      ...Array.from({ length: 40 }, (_, i) => ({ type: 'code', id: `x${i}`, code: 'pass' })),
+    ],
+  });
+  assert.equal(state.cells[0].code, 'print(1)');
+  assert.equal(state.cells[1].code, '');
+  assert.equal(state.cells.filter((c) => c.type === 'code' || c.type === 'pycanvas').length, 30);
+  assert.deepEqual(notebook.normalize(state), state);
 });

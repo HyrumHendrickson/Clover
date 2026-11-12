@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <!--
+      Opaque origin (the parent uses sandbox="allow-scripts" without allow-same-origin), so nothing here can read
+      Clover's saved workspace. TeX Live is downloaded on demand from the Siglum runtime service, which is why
+      connect-src allows https. The engine needs WebAssembly and a worker made from a blob URL.
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self' 'wasm-unsafe-eval' blob: https://packages.siglum.org; worker-src blob:; connect-src 'self' https:; img-src data: blob:; form-action 'none'; base-uri 'none'"
+    />
+    <meta name="robots" content="noindex" />
+    <title>Clover LaTeX runner</title>
+  </head>
+  <body>
+    <script type="module" src="latex.js"></script>
+  </body>
+</html>

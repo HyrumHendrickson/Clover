@@ -14,7 +14,7 @@ export default [
     },
   },
   {
-    files: ['js/**/*.js'],
+    files: ['js/**/*.js', 'runner/latex.js'],
     languageOptions: { ecmaVersion: 2023, sourceType: 'module', globals: { ...globals.browser } },
   },
   {

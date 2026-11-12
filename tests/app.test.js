@@ -27,7 +27,7 @@ test('first run shows the launcher with one card per tool', () => {
   assert.equal(app.tabs.length, 0);
   assert.equal(elements.launcher.hidden, false);
   assert.equal(elements.launcher.querySelectorAll('.launch-card').length, TOOL_LIST.length);
-  assert.equal(TOOL_LIST.length, 9);
+  assert.equal(TOOL_LIST.length, 13);
 });
 
 test('every tool opens without errors, including two of the same kind', async () => {
@@ -273,7 +273,7 @@ test('vector field tool validates both components', async () => {
 test('python tool runs code in a sandboxed iframe and validates messages', async () => {
   const tab = app.tabs.find((t) => t.type === 'python');
   app.activate(tab.id);
-  assert.equal(qa('.chip').length, 9);
+  assert.equal(qa('.chip').length, 12);
   assert.equal(q('iframe'), null, 'nothing runs until the user presses Run');
 
   const editor = q('textarea');

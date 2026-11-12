@@ -321,6 +321,7 @@ function numberToScalar(text) {
 }
 
 const asScalar = (v, what) => {
+  if (isEigen(v)) noEigen(what);
   if (isMatrix(v)) {
     if (v.rows === 1 && v.cols === 1) return v.a[0][0];
     throw new LinalgError(`${what} needs a number, but got a ${v.shape} matrix.`);
@@ -342,6 +343,295 @@ function applyScalarFn(name, fn) {
   };
 }
 
+/* ------------------------------------------------------------ eigenvalues */
+
+/**
+ * The eigenvalues and eigenvectors of a square matrix. Each entry of `pairs` is one distinct eigenvalue:
+ * `value` (a rational when it is one, else a decimal) or, for a complex pair, `re` and `im` with no vectors.
+ * `multiplicity` is the algebraic multiplicity. `vectors` is a basis of the eigenspace, as arrays of scalars,
+ * and `unit` holds the same directions as unit-length decimals, ready to draw.
+ */
+export class Eigen {
+  constructor(pairs, size) {
+    this.pairs = pairs;
+    this.size = size;
+  }
+
+  get hasComplex() {
+    return this.pairs.some((p) => p.value === null);
+  }
+}
+
+const noEigen = (what) => {
+  throw new LinalgError(
+    `${what} is a list of eigenvalues and eigenvectors. Use eigenvalues(A) or eigenvectors(A) in a calculation.`,
+  );
+};
+
+const isEigen = (x) => x instanceof Eigen;
+
+/** Coefficients of det(xI - A), lowest power first, by the Faddeev-LeVerrier recurrence (exact for rational entries). */
+function charPoly(A) {
+  const n = A.rows;
+  let M = zeros(n, n);
+  const c = new Array(n + 1);
+  c[n] = q(1);
+  for (let k = 1; k <= n; k += 1) {
+    M = matAdd(matMul(A, M), scale(identity(n), c[n - k + 1]));
+    c[n - k] = neg(div(trace(matMul(A, M)), q(k)));
+  }
+  return c;
+}
+
+const polyTrim = (p) => {
+  const out = [...p];
+  while (out.length > 1 && isZero(out[out.length - 1])) out.pop();
+  return out;
+};
+const polyDeg = (p) => (p.length === 1 && isZero(p[0]) ? -1 : p.length - 1);
+const polyDeriv = (p) => polyTrim(p.length <= 1 ? [q(0)] : p.slice(1).map((x, i) => mul(x, q(i + 1))));
+const polySub = (a, b) =>
+  polyTrim(Array.from({ length: Math.max(a.length, b.length) }, (_, i) => sub(a[i] ?? q(0), b[i] ?? q(0))));
+
+function polyDivMod(a, b) {
+  let r = polyTrim(a);
+  const quotient = Array.from({ length: Math.max(1, a.length - b.length + 1) }, () => q(0));
+  const lead = b[b.length - 1];
+  while (polyDeg(r) >= polyDeg(b) && polyDeg(r) >= 0) {
+    const shift = r.length - b.length;
+    const f = div(r[r.length - 1], lead);
+    quotient[shift] = f;
+    for (let i = 0; i < b.length; i += 1) r[i + shift] = sub(r[i + shift], mul(f, b[i]));
+    r.pop();
+    if (r.length === 0) r.push(q(0));
+    r = polyTrim(r);
+  }
+  return { q: polyTrim(quotient), r };
+}
+
+function polyGcd(a, b) {
+  let x = polyTrim(a);
+  let y = polyTrim(b);
+  while (polyDeg(y) >= 0) [x, y] = [y, polyDivMod(x, y).r];
+  const lead = x[x.length - 1];
+  return x.map((c) => div(c, lead));
+}
+
+/** Split a polynomial with rational coefficients into squarefree factors, each with its multiplicity (Yun's method). */
+function squarefreeFactors(p) {
+  const dp = polyDeriv(p);
+  const g = polyGcd(p, dp);
+  let b = polyDivMod(p, g).q;
+  let d = polySub(polyDivMod(dp, g).q, polyDeriv(b));
+  const out = [];
+  for (let i = 1; polyDeg(b) > 0 && i <= 12; i += 1) {
+    const a = polyGcd(b, d);
+    if (polyDeg(a) > 0) out.push({ poly: a, mult: i });
+    b = polyDivMod(b, a).q;
+    d = polySub(polyDivMod(d, a).q, polyDeriv(b));
+  }
+  return out;
+}
+
+const polyEvalExact = (p, x) => p.reduceRight((acc, c) => add(mul(acc, x), c), q(0));
+
+/** All complex roots of a polynomial (lowest power first, decimals) by Durand-Kerner, as [re, im] pairs. */
+function numericRoots(coefficients) {
+  const c = coefficients.map(toNumber);
+  const n = c.length - 1;
+  if (n < 1) return [];
+  const lead = c[n];
+  const p = c.map((x) => x / lead);
+  const radius = 1 + Math.max(...p.slice(0, n).map(Math.abs));
+  let z = Array.from({ length: n }, (_, k) => {
+    const angle = (2 * Math.PI * k) / n + 0.4;
+    return [(radius / 2) * Math.cos(angle), (radius / 2) * Math.sin(angle)];
+  });
+  const evalAt = ([re, im]) => {
+    let r = 1;
+    let i = 0;
+    for (let k = n - 1; k >= 0; k -= 1) [r, i] = [r * re - i * im + p[k], r * im + i * re];
+    return [r, i];
+  };
+  for (let iter = 0; iter < 800; iter += 1) {
+    let moved = 0;
+    z = z.map((zk, k) => {
+      const [pr, pi] = evalAt(zk);
+      let dr = 1;
+      let di = 0;
+      z.forEach((zj, j) => {
+        if (j === k) return;
+        const er = zk[0] - zj[0];
+        const ei = zk[1] - zj[1];
+        [dr, di] = [dr * er - di * ei, dr * ei + di * er];
+      });
+      const den = dr * dr + di * di || 1e-300;
+      const sr = (pr * dr + pi * di) / den;
+      const si = (pi * dr - pr * di) / den;
+      moved = Math.max(moved, Math.hypot(sr, si));
+      return [zk[0] - sr, zk[1] - si];
+    });
+    if (moved < 1e-15 * radius) break;
+  }
+  return z;
+}
+
+/** A simple fraction equal to `x` if there is one with a small denominator that makes `poly` exactly zero. */
+function exactRoot(poly, x) {
+  let [h0, h1, k0, k1] = [1n, BigInt(Math.floor(x)), 0n, 1n];
+  let rest = x - Math.floor(x);
+  for (let i = 0; i < 24; i += 1) {
+    if (k1 > 1_000_000n) break;
+    const candidate = new Q(h1, k1);
+    // The candidate must be near x as well as a root: 1 is a root too when x is 1.99999999.
+    if (Math.abs(toNumber(candidate) - x) < 1e-6 * (1 + Math.abs(x)) && isZero(polyEvalExact(poly, candidate))) {
+      return candidate;
+    }
+    if (rest < 1e-12) break;
+    const inverse = 1 / rest;
+    const a = BigInt(Math.floor(inverse));
+    rest = inverse - Math.floor(inverse);
+    [h0, h1] = [h1, a * h1 + h0];
+    [k0, k1] = [k1, a * k1 + k0];
+  }
+  return null;
+}
+
+/** A basis of the null space of B. Exact for rational B; otherwise unit vectors found with a tolerance. */
+function nullSpace(B) {
+  const n = B.cols;
+  const exact = B.a.every((row) => row.every(isQ));
+  const scaleMax = Math.max(1e-12, ...B.a.flat().map((x) => Math.abs(toNumber(x))));
+  let R;
+  let pivots;
+  if (exact) {
+    ({ matrix: R, pivots } = rref(B));
+  } else {
+    const m = B.a.map((row) => row.map(toNumber));
+    pivots = [];
+    let r = 0;
+    const tol = 1e-8 * scaleMax;
+    for (let c = 0; c < n && r < B.rows; c += 1) {
+      let best = r;
+      for (let i = r; i < B.rows; i += 1) if (Math.abs(m[i][c]) > Math.abs(m[best][c])) best = i;
+      if (Math.abs(m[best][c]) <= tol) continue;
+      [m[best], m[r]] = [m[r], m[best]];
+      const pv = m[r][c];
+      m[r] = m[r].map((x) => x / pv);
+      for (let i = 0; i < B.rows; i += 1) {
+        if (i === r) continue;
+        const f = m[i][c];
+        m[i] = m[i].map((x, j) => x - f * m[r][j]);
+      }
+      pivots.push(c);
+      r += 1;
+    }
+    R = new Matrix(m);
+  }
+  const free = Array.from({ length: n }, (_, i) => i).filter((i) => !pivots.includes(i));
+  return free.map((f) => {
+    const v = new Array(n).fill(exact ? q(0) : 0);
+    v[f] = exact ? q(1) : 1;
+    pivots.forEach((pc, row) => {
+      v[pc] = exact ? neg(R.a[row][f]) : -R.a[row][f];
+    });
+    return v;
+  });
+}
+
+/** Clear denominators and common factors, and make the first nonzero entry positive. */
+function tidyExact(v) {
+  let lcm = 1n;
+  for (const x of v) lcm = (lcm / bigGcd(lcm, x.d)) * x.d;
+  let ints = v.map((x) => (x.n * lcm) / x.d);
+  const g = ints.reduce((acc, x) => bigGcd(acc, x), 0n) || 1n;
+  ints = ints.map((x) => x / g);
+  const first = ints.find((x) => x !== 0n) ?? 1n;
+  return ints.map((x) => new Q(first < 0n ? -x : x, 1n));
+}
+
+function tidyFloat(v) {
+  const length = Math.hypot(...v) || 1;
+  const first = v.find((x) => Math.abs(x) > 1e-9) ?? 1;
+  return v.map((x) => (first < 0 ? -x : x) / length);
+}
+
+/** Eigenvalues, with multiplicities, and an eigenvector basis for each real one. */
+export function eigen(A) {
+  if (!A.isSquare) throw new LinalgError(`Only a square matrix has eigenvalues, but this one is ${A.shape}.`);
+  if (A.rows > MAX_DIM) throw new LinalgError(`Eigenvalues are limited to ${MAX_DIM} by ${MAX_DIM} matrices.`);
+  const n = A.rows;
+  const poly = charPoly(A);
+  const roots = []; // { re, im, mult, exact: Q | null }
+  if (poly.every(isQ)) {
+    for (const { poly: f, mult } of squarefreeFactors(poly)) {
+      if (polyDeg(f) === 1) {
+        roots.push({ re: toNumber(neg(f[0])), im: 0, mult, exact: neg(div(f[0], f[1])) });
+        continue;
+      }
+      for (const [re, im] of numericRoots(f)) {
+        const real = Math.abs(im) < 1e-9 * (1 + Math.abs(re));
+        if (!real && im < 0) continue; // the conjugate stands for the pair
+        const exact = real ? exactRoot(f, re) : null;
+        roots.push({ re: exact ? toNumber(exact) : re, im: real ? 0 : im, mult, exact });
+      }
+    }
+  } else {
+    const found = [];
+    for (const [re, im] of numericRoots(poly)) {
+      const real = Math.abs(im) < 1e-7 * (1 + Math.abs(re));
+      if (!real && im < 0) continue;
+      const same = found.find((r) => Math.abs(r.re - re) < 1e-5 && Math.abs(r.im - (real ? 0 : im)) < 1e-5);
+      if (same) same.mult += 1;
+      else found.push({ re: real ? re : re, im: real ? 0 : im, mult: 1, exact: null });
+    }
+    roots.push(...found);
+  }
+  roots.sort((a, b) => (a.im !== 0) - (b.im !== 0) || b.re - a.re);
+  const pairs = roots.map((r) => {
+    if (r.im !== 0) return { value: null, re: r.re, im: r.im, multiplicity: r.mult, vectors: [], unit: [] };
+    const value = r.exact ?? r.re;
+    const B = new Matrix(A.a.map((row, i) => row.map((x, j) => (i === j ? sub(x, value) : x))));
+    const basis = nullSpace(B);
+    const vectors = basis.map((v) => (v.every(isQ) ? tidyExact(v) : tidyFloat(v.map(toNumber))));
+    return {
+      value,
+      re: r.re,
+      im: 0,
+      multiplicity: r.mult,
+      vectors,
+      unit: vectors.map((v) => tidyFloat(v.map(toNumber))),
+    };
+  });
+  return new Eigen(pairs, n);
+}
+
+const complexText = (p) => `${formatScalar(p.re)} \u00b1 ${formatScalar(Math.abs(p.im))}i`;
+
+function realEigen(A, name) {
+  const e = eigen(needMatrix(A, name));
+  if (e.hasComplex) {
+    const pair = e.pairs.find((p) => p.value === null);
+    throw new LinalgError(
+      `This matrix has complex eigenvalues (${complexText(pair)}), so ${name} cannot give real answers.`,
+    );
+  }
+  return e;
+}
+
+function eigenvaluesOf(A) {
+  const e = realEigen(A, 'eigenvalues');
+  const list = e.pairs.flatMap((p) => Array.from({ length: p.multiplicity }, () => p.value));
+  return new Matrix(list.map((x) => [x]));
+}
+
+function eigenvectorsOf(A) {
+  const e = realEigen(A, 'eigenvectors');
+  const columns = e.pairs.flatMap((p) => p.vectors);
+  if (columns.length === 0) throw new LinalgError('This matrix has no real eigenvectors.');
+  return new Matrix(Array.from({ length: e.size }, (_, i) => columns.map((v) => v[i])));
+}
+
 const FUNCTIONS = {
   det: [1, (A) => det(needMatrix(A, 'det'))],
   tr: [1, (A) => trace(needMatrix(A, 'tr'))],
@@ -351,6 +641,9 @@ const FUNCTIONS = {
   rank: [1, (A) => q(rank(needMatrix(A, 'rank')))],
   rref: [1, (A) => rref(needMatrix(A, 'rref')).matrix],
   norm: [1, (A) => norm(needMatrix(A, 'norm'))],
+  eig: [1, (A) => eigen(needMatrix(A, 'eig'))],
+  eigenvalues: [1, eigenvaluesOf],
+  eigenvectors: [1, eigenvectorsOf],
   dot: [2, (u, v) => dot(needMatrix(u, 'dot'), needMatrix(v, 'dot'))],
   cross: [2, (u, v) => cross(needMatrix(u, 'cross'), needMatrix(v, 'cross'))],
   solve: [2, (A, b) => solve(needMatrix(A, 'solve'), needMatrix(b, 'solve'))],
@@ -376,6 +669,7 @@ function fail(message) {
 }
 
 function needMatrix(v, name) {
+  if (isEigen(v)) noEigen(name);
   if (!isMatrix(v)) throw new LinalgError(`${name} needs a matrix or vector, but got a number.`);
   return v;
 }
@@ -596,10 +890,12 @@ class Evaluator {
 }
 
 function negate(v) {
+  if (isEigen(v)) noEigen('Negation');
   return isMatrix(v) ? map(v, neg) : neg(v);
 }
 
 function combine(op, a, b) {
+  if (isEigen(a) || isEigen(b)) noEigen('eig(A)');
   const am = isMatrix(a);
   const bm = isMatrix(b);
   if (op === '+' || op === '-') {
@@ -623,6 +919,7 @@ function combine(op, a, b) {
 }
 
 function raise(base, exponent) {
+  if (isEigen(base)) noEigen('eig(A)');
   const k = asScalar(exponent, 'An exponent');
   const n = toNumber(k);
   if (isMatrix(base)) {

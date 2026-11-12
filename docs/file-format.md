@@ -31,17 +31,21 @@ Files use the `.clover` extension and are UTF-8 JSON. Importers accept `.clover`
 
 ## Tool state
 
-| `type`     | State                                                                  |
-| ---------- | ---------------------------------------------------------------------- |
-| `graph`    | `rows`, `view`, `grid`, `minor`, `numbers`, `angle`                    |
-| `matrix`   | `lines`: matrices (`name`, `cells`) and calculations (`text`)          |
-| `complex`  | `expr`, `mode`, `quality`, `grid`, `view`                              |
-| `vector`   | `p`, `q`, `arrows`, `heat`, `flow`, `grid`, `density`, `seeds`, `view` |
-| `python`   | `code`                                                                 |
-| `graph3d`  | `rows`, `camera`, `bounds`, `grid`, `numbers`, `wire`, `angle`         |
-| `notebook` | `cells` (`text`, `math`, `graph`, or `embed`), `angle`                 |
-| `geometry` | `rows` (`id`, `text`), `snap`, `view`                                  |
-| `stats`    | `cols`, `mode`, `describe`, `regress`, `dist`, `tests`                 |
+| `type`     | State                                                                                     |
+| ---------- | ----------------------------------------------------------------------------------------- |
+| `graph`    | `rows`, `view`, `grid`, `minor`, `numbers`, `angle`                                       |
+| `matrix`   | `lines`: matrices (`name`, `cells`) and calculations (`text`). Shown as "Linear algebra". |
+| `complex`  | `expr`, `mode`, `quality`, `grid`, `view`                                                 |
+| `vector`   | `p`, `q`, `arrows`, `heat`, `flow`, `grid`, `density`, `seeds`, `view`                    |
+| `python`   | `code`                                                                                    |
+| `graph3d`  | `rows`, `camera`, `bounds`, `grid`, `numbers`, `wire`, `angle`                            |
+| `notebook` | `cells` (`text`, `math`, `graph`, `embed`, `code`, or `pycanvas`), `angle`                |
+| `geometry` | `rows` (`id`, `text`), `snap`, `view`                                                     |
+| `stats`    | `cols`, `mode`, `describe`, `regress`, `dist`, `tests`                                    |
+| `fractals` | `kind`, `view`, `iterations`, `palette`, `power`, `cRe`, `cIm`                            |
+| `automata` | `code` (a Python rule), `width`, `height`, `cells` (one hex digit per cell), `speed`      |
+| `latex`    | `files` (`path` with `text`, or `data` as base64), `main`, `active`, `engine`, `auto`     |
+| `maxima`   | `inputs`: the commands of the session, replayed when the tab opens                        |
 
 `view` is `{ cx, cy, radius }`: the centre and half the shorter canvas side in world units. The `graph` tool uses `{ cx, cy, xspan, yspan }` instead, because its axes scale independently: the units across the width and height, with a `yspan` of 0 meaning "square".
 
@@ -74,12 +78,15 @@ Each row is `{ id, text }`, one line of the geometry language: a comment (`#`), 
 
 ## Versions
 
-| Version | Change                                                                                                                                |
-| ------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| 1       | First release. The `desmos` tool saved `product` and `graphId` for an embedded calculator.                                            |
-| 2       | `graph` replaces `desmos`. Version 1 `desmos` tabs are migrated to an empty graph, with a note holding the saved link.                |
-| 3       | `matrix` holds named lines (older state is converted). `embed` notebook cells and the `geometry` tool are added.                      |
-| 4       | Graph rows gain `folder` and `style`, and `folder` and `table` rows are added. The `stats` tool is added. Older files open unchanged. |
+| Version | Change                                                                                                                                     |
+| ------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| 1       | First release. The `desmos` tool saved `product` and `graphId` for an embedded calculator.                                                 |
+| 2       | `graph` replaces `desmos`. Version 1 `desmos` tabs are migrated to an empty graph, with a note holding the saved link.                     |
+| 3       | `matrix` holds named lines (older state is converted). `embed` notebook cells and the `geometry` tool are added.                           |
+| 4       | Graph rows gain `folder` and `style`, and `folder` and `table` rows are added. The `stats` tool is added. Older files open unchanged.      |
+| 5       | The `fractals`, `automata`, `latex`, and `maxima` tools are added. Notebooks gain `code` and `pycanvas` cells. Older files open unchanged. |
+
+Notebook `code` and `pycanvas` cells are `{ id, type, code }`. Their output is never saved. Python code in an imported file runs only when a person presses Run, Play, Step, or Compile.
 
 ## Import rules
 

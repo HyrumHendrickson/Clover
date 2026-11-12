@@ -26,4 +26,4 @@ Use a short imperative summary, for example `Add Hilbert curve preset`. Explain 
 
 Use the issue templates. For security issues, follow [SECURITY.md](SECURITY.md) instead.
 
-By contributing you agree that your work is released under the [MIT License](LICENSE).
+By contributing you agree that your work is released under the [GNU General Public License, version 2](LICENSE).

@@ -17,6 +17,10 @@ https://hyrumhendrickson.github.io/Clover/
 | **Vector fields**     | Plot F = ⟨P, Q⟩ as arrows, magnitude shading, and animated flow. Click to trace trajectories. Divergence and curl are shown under the cursor.                                                 |
 | **3D graphing**       | Surfaces, implicit surfaces, space curves, parametric surfaces, and points. Orbit, pan, and zoom.                                                                                             |
 | **Notebook**          | Text, math, and graph cells in one document, sharing definitions.                                                                                                                             |
+| **Fractals**          | Mandelbrot, Julia, Burning Ship, tricorn, and Newton fractals with pan and zoom.                                                                                                              |
+| **Cellular automata** | Rules written in Python with any number of colours. Click to paint; play, pause, step, and step back. Includes Life and a forest fire.                                                        |
+| **LaTeX**             | Several files and pictures, source beside the PDF. TeX Live runs in WebAssembly in a sandboxed frame.                                                                                         |
+| **Symbolic algebra**  | Maxima syntax: expand, differentiate, integrate, solve. A built-in engine, not the full Maxima program.                                                                                       |
 | **Python turtle**     | Python with the `turtle` module, run in the browser. Presets for Koch, Sierpinski, dragon, tree, Hilbert, Lévy, Gosper, and Barnsley fern.                                                    |
 
 ![Complex functions](docs/images/complex.png)
@@ -55,12 +59,12 @@ Push to `main`. The Pages workflow in `.github/workflows/pages.yml` publishes th
 
 ## Security
 
-Shared files are treated as untrusted data. Python runs in a sandboxed iframe with no access to your saved workspace or the network, and only when you press Run. See [SECURITY.md](SECURITY.md).
+Shared files are treated as untrusted data. Python runs in a sandboxed iframe with no access to your saved workspace or the network, and only when you press Run, Play, or Step. The LaTeX compiler runs in its own sandboxed frame with no access to your workspace; it downloads TeX packages when a document needs them. See [SECURITY.md](SECURITY.md).
 
 ## Third-party software
 
-[Skulpt](https://github.com/skulpt/skulpt) (MIT) is vendored in `vendor/skulpt`. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). The graphing tool is original code. Its input syntax follows Desmos conventions where practical; Clover is not affiliated with Desmos Studio PBC. See [docs/graphing.md](docs/graphing.md) for the full syntax.
+[Skulpt](https://github.com/skulpt/skulpt) (MIT) is vendored in `vendor/skulpt`, and the [Siglum](https://github.com/SiglumProject/siglum) TeX engine (MIT) in `vendor/siglum`. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). The graphing tool is original code. Its input syntax follows Desmos conventions where practical; Clover is not affiliated with Desmos Studio PBC. See [docs/graphing.md](docs/graphing.md) for the full syntax.
 
 ## License
 
-[MIT](LICENSE)
+[GNU General Public License, version 2](LICENSE), the same license as [Maxima](https://maxima.sourceforge.io/). Earlier releases were published under the MIT license.

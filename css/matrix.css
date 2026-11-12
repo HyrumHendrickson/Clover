@@ -1,7 +1,92 @@
 /* Matrices: named grids and calculations that use them. */
 
 .mx-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 440px);
+  gap: 14px;
+  overflow: hidden;
+}
+
+.mx-main {
+  min-width: 0;
+  min-height: 0;
   overflow-y: auto;
+}
+
+.mx-viz {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.mx-viz-stage {
+  flex: 1;
+  min-height: 260px;
+}
+
+.mx-viz-empty {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  margin: 0;
+  padding: 24px;
+  color: var(--text-muted);
+  text-align: center;
+  pointer-events: none;
+}
+
+.mx-viz-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.mx-slider {
+  flex: 1;
+  min-width: 120px;
+}
+
+.mx-caption {
+  max-height: 7.5em;
+  overflow-y: auto;
+}
+
+.mx-line.is-selected {
+  border-color: var(--accent);
+}
+
+.mx-eigs {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.mx-eig {
+  padding: 2px 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.mx-eig-note {
+  color: var(--text-muted);
+}
+
+@media (max-width: 960px) {
+  .mx-body {
+    grid-template-columns: minmax(0, 1fr);
+    overflow-y: auto;
+  }
+
+  .mx-main {
+    overflow: visible;
+  }
+
+  .mx-viz-stage {
+    min-height: 320px;
+  }
 }
 
 .mx-lines {

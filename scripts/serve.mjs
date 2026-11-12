@@ -17,6 +17,7 @@ const TYPES = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
   '.mjs': 'text/javascript; charset=utf-8',
+  '.wasm': 'application/wasm',
   '.css': 'text/css; charset=utf-8',
   '.json': 'application/json; charset=utf-8',
   '.png': 'image/png',
@@ -43,6 +44,9 @@ const server = createServer(async (request, response) => {
       'Content-Type': TYPES[extname(target)] ?? 'application/octet-stream',
       'Cache-Control': 'no-store',
       'X-Content-Type-Options': 'nosniff',
+      // Sandboxed runner frames have an opaque origin, so they can only load module scripts with CORS.
+      // GitHub Pages sends this header too.
+      'Access-Control-Allow-Origin': '*',
     });
     response.end(body);
   } catch {

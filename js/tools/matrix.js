@@ -1,10 +1,13 @@
-import { clamp, debounce, h } from '../core/dom.js';
+import { clamp, debounce, h, onResize } from '../core/dom.js';
 import { icon } from '../core/icons.js';
 import { openMenu } from '../core/menu.js';
 import { createMathField } from '../core/mathfield.js';
-import { evaluateLines, formatScalar, isMatrix, MAX_DIM } from '../lib/linalg.js';
+import { Eigen, evaluateLines, formatScalar, isMatrix, MAX_DIM } from '../lib/linalg.js';
+import { attachPanZoom } from '../lib/interact.js';
+import { draw2D, draw3D, describePlan, tipOf2 } from '../lib/linvizdraw.js';
+import { fitRadius, planFor } from '../lib/linviz.js';
 import { typeset } from '../lib/graph/typeset.js';
-import { fitCanvas } from '../lib/viewport.js';
+import { View, fitCanvas, themeColors } from '../lib/viewport.js';
 
 const MAX_LINES = 40;
 const MAX_CELL = 24;
@@ -99,6 +102,33 @@ function normalize(raw) {
 
 /* -------------------------------------------------------------------- tool */
 
+function eigenDisplay(value) {
+  const rows = value.pairs.map((pair) => {
+    if (pair.value === null) {
+      const text = `${formatScalar(pair.re)} \u00b1 ${formatScalar(Math.abs(pair.im))}i`;
+      return h(
+        'li',
+        { class: 'mx-eig' },
+        `\u03bb = ${text}`,
+        h('span', { class: 'mx-eig-note' }, ' complex pair, no real eigenvectors'),
+      );
+    }
+    const times = pair.multiplicity > 1 ? ` (multiplicity ${pair.multiplicity})` : '';
+    const vectors = pair.vectors.map((v) => `(${v.map(formatScalar).join(', ')})`).join(' and ');
+    return h(
+      'li',
+      { class: 'mx-eig' },
+      `\u03bb = ${formatScalar(pair.value)}${times}`,
+      h(
+        'span',
+        { class: 'mx-eig-note' },
+        vectors ? `, eigenvector${pair.vectors.length > 1 ? 's' : ''} ${vectors}` : ', no eigenvector',
+      ),
+    );
+  });
+  return h('ul', { class: 'mx-eigs', 'aria-label': 'Eigenvalues and eigenvectors' }, rows);
+}
+
 function matrixDisplay(matrix) {
   const out = h(
     'div',
@@ -111,9 +141,9 @@ function matrixDisplay(matrix) {
 
 export default {
   type: 'matrix',
-  name: 'Matrices',
+  name: 'Linear algebra',
   description:
-    'Define matrices and vectors, then add, multiply, invert, and more on the next line. Entries stay exact fractions.',
+    'Define matrices and vectors, then add, multiply, invert, and find eigenvalues. Click any line to see it drawn: vectors in the plane, and what a matrix does to them.',
   defaultState: () => normalize({}),
   normalize,
 
@@ -160,13 +190,200 @@ export default {
     let result = [];
 
     const list = h('ol', { class: 'mx-lines' });
+    let selectedId = null;
+    let active = false;
+    let t = 1;
+    let animation = 0;
+    let yaw = 0.6;
+    let pitch = 0.45;
+    let zoom3 = 1;
+    let plan = { kind: 'none', message: 'Click a line to see it drawn.' };
+    const view = new View({ cx: 0, cy: 0, radius: 5 }, 1, 1);
     const indexOf = (id) => state.lines.findIndex((l) => l.id === id);
+
+    /* ------------------------------------------------------------- picture */
+
+    const canvas = h('canvas', {
+      class: 'plot-canvas',
+      tabindex: 0,
+      role: 'img',
+      'aria-label': 'Click a line to see it drawn.',
+    });
+    const placeholder = h('p', { class: 'mx-viz-empty' });
+    const caption = h('p', { class: 'tool-note mx-caption', 'aria-live': 'polite' });
+    const slider = h('input', {
+      class: 'mx-slider',
+      type: 'range',
+      min: '0',
+      max: '1',
+      step: '0.01',
+      value: '1',
+      'aria-label': 'How much of the matrix has been applied, from none to all',
+      oninput: () => {
+        cancelAnimationFrame(animation);
+        t = Number(slider.value);
+        drawViz();
+      },
+    });
+    const animate = h(
+      'button',
+      {
+        class: 'btn btn-small',
+        type: 'button',
+        onclick: () => {
+          cancelAnimationFrame(animation);
+          const reduce = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+          if (reduce) {
+            t = 1;
+            slider.value = '1';
+            drawViz();
+            return;
+          }
+          const start = performance.now();
+          const tick = (now) => {
+            t = Math.min(1, (now - start) / 1400);
+            slider.value = String(t);
+            drawViz();
+            if (t < 1) animation = requestAnimationFrame(tick);
+          };
+          t = 0;
+          animation = requestAnimationFrame(tick);
+        },
+      },
+      icon('play', 12),
+      ' Apply',
+    );
+    const controls = h(
+      'div',
+      { class: 'mx-viz-controls' },
+      h('span', { class: 'field-label' }, 'Apply the matrix'),
+      slider,
+      animate,
+    );
+    const stage = h('div', { class: 'mx-viz-stage plot-body' }, canvas, placeholder);
+
+    const selectedIndex = () => state.lines.findIndex((l) => l.id === selectedId);
+
+    function refreshPlan({ refit = false } = {}) {
+      const index = selectedIndex();
+      plan =
+        index < 0 ? { kind: 'none', message: 'Click a line to see it drawn.' } : planFor(state.lines, result, index);
+      if (refit && plan.kind !== 'none') {
+        const reached =
+          plan.kind === 'apply' ? [plan.A.map((row) => row.reduce((sum, a, k) => sum + a * plan.x[k], 0))] : [];
+        const points =
+          plan.kind === 'vector'
+            ? [plan.v]
+            : plan.kind === 'apply'
+              ? [plan.x, ...reached]
+              : [plan.A.flat(), plan.A.map(() => 1)];
+        view.set({ cx: 0, cy: 0, radius: fitRadius(points) });
+        zoom3 = 1;
+      }
+      drawViz();
+    }
+
+    function drawViz() {
+      const matrixPlan = plan.kind === 'transform' || plan.kind === 'apply';
+      controls.hidden = !matrixPlan;
+      placeholder.hidden = plan.kind !== 'none';
+      placeholder.textContent = plan.kind === 'none' ? plan.message : '';
+      const text = describePlan(plan);
+      caption.textContent = plan.kind === 'none' ? '' : text;
+      canvas.setAttribute('aria-label', plan.kind === 'none' ? plan.message : `Drawing. ${text}`);
+      if (!active) return;
+      const a = fitCanvas(canvas);
+      view.resize(a.width, a.height);
+      const colors = themeColors();
+      a.ctx.fillStyle = colors.bg;
+      a.ctx.fillRect(0, 0, a.width, a.height);
+      if (plan.kind === 'none') return;
+      if (plan.dim === 3) {
+        const points = plan.kind === 'vector' ? [plan.v] : [plan.A.flat(), ...(plan.x ? [plan.x] : [])];
+        draw3D(a.ctx, a.width, a.height, colors, plan, t, { yaw, pitch, radius: fitRadius(points) / zoom3 });
+      } else {
+        draw2D(a.ctx, view, colors, plan, t);
+      }
+    }
+
+    /** Dragging the tip of a 2D vector changes the numbers in its matrix line. */
+    const editableVector = () => {
+      const line = state.lines[selectedIndex()];
+      return plan.kind === 'vector' &&
+        plan.dim === 2 &&
+        line?.kind === 'matrix' &&
+        line.cells.length === 2 &&
+        line.cells[0].length === 1
+        ? line
+        : null;
+    };
+    const detach = attachPanZoom(canvas, view, {
+      onChange: drawViz,
+      onReset: () => refreshPlan({ refit: true }),
+      drag: {
+        hitTest: (x, y) => {
+          if (!editableVector()) return false;
+          const tip = tipOf2(view, plan);
+          return Boolean(tip) && Math.hypot(tip[0] - x, tip[1] - y) < 18;
+        },
+        move: (x, y) => {
+          const line = editableVector();
+          if (!line) return;
+          const places = view.radius < 2 ? 100 : view.radius < 20 ? 10 : 1;
+          const [wx, wy] = view.toWorld(x, y).map((c) => Math.round(c * places) / places);
+          line.cells[0][0] = String(Object.is(wx, -0) ? 0 : wx);
+          line.cells[1][0] = String(Object.is(wy, -0) ? 0 : wy);
+          const refs = lineEls.get(line.id);
+          refs.cells[0][0].value = line.cells[0][0];
+          refs.cells[1][0].value = line.cells[1][0];
+          ctx.save();
+          evaluate();
+        },
+      },
+    });
+    let spin = null;
+    canvas.addEventListener('pointerdown', (event) => {
+      if (plan.dim === 3) spin = [event.clientX, event.clientY];
+    });
+    canvas.addEventListener('pointermove', (event) => {
+      if (!spin || plan.dim !== 3 || event.buttons === 0) return;
+      yaw += (event.clientX - spin[0]) * 0.01;
+      pitch = clamp(pitch + (event.clientY - spin[1]) * 0.01, -1.4, 1.4);
+      spin = [event.clientX, event.clientY];
+      drawViz();
+    });
+    canvas.addEventListener('pointerup', () => {
+      spin = null;
+    });
+    canvas.addEventListener(
+      'wheel',
+      (event) => {
+        if (plan.dim !== 3) return;
+        zoom3 = clamp(zoom3 * Math.exp(-event.deltaY * 0.0015), 0.2, 8);
+        drawViz();
+      },
+      { passive: true },
+    );
+
+    function select(id) {
+      if (id === selectedId) return;
+      selectedId = id;
+      for (const [lineId, refs] of lineEls) {
+        refs.li.classList.toggle('is-selected', lineId === id);
+        refs.li.setAttribute('aria-current', lineId === id ? 'true' : 'false');
+      }
+      t = 1;
+      slider.value = '1';
+      refreshPlan({ refit: true });
+    }
 
     /* ------------------------------------------------------------ evaluate */
 
     function evaluate() {
       result = evaluateLines(state.lines);
       state.lines.forEach((line, index) => syncLine(line, result[index]));
+      if (selectedId !== null && selectedIndex() < 0) selectedId = null;
+      refreshPlan();
     }
     const evaluateLater = debounce(evaluate, 100);
 
@@ -191,9 +408,12 @@ export default {
         refs.result.append(h('p', { class: 'mx-error', role: 'alert' }, out.error));
       } else if (out.value !== null) {
         const value = out.value;
-        const shown = isMatrix(value)
-          ? matrixDisplay(value)
-          : h('span', { class: 'mx-scalar' }, typeset(formatScalar(value)));
+        const shown =
+          value instanceof Eigen
+            ? eigenDisplay(value)
+            : isMatrix(value)
+              ? matrixDisplay(value)
+              : h('span', { class: 'mx-scalar' }, typeset(formatScalar(value)));
         refs.result.append(
           h('div', { class: 'mx-answer' }, h('span', { class: 'mx-equals', 'aria-hidden': 'true' }, '='), shown),
         );
@@ -494,6 +714,10 @@ export default {
       const items = state.lines.map((line, index) => {
         const built = line.kind === 'matrix' ? buildMatrix(line, index) : buildExpr(line, index);
         lineEls.set(line.id, built.refs);
+        built.li.classList.toggle('is-selected', line.id === selectedId);
+        built.li.setAttribute('aria-current', line.id === selectedId ? 'true' : 'false');
+        built.li.addEventListener('focusin', () => select(line.id));
+        built.li.addEventListener('click', () => select(line.id));
         return built.li;
       });
       list.replaceChildren(...items);
@@ -528,10 +752,20 @@ export default {
             ['A^2, A^-1, A^T', 'powers, inverse, transpose (A\u2019 also works)'],
             ['det(A), tr(A), rank(A), rref(A), inv(A)', 'determinant, trace, rank, reduced row echelon form'],
             ['solve(A, b)', 'the solution x of Ax = b'],
+            ['eig(A)', 'eigenvalues with their eigenvectors, one per line'],
+            [
+              'eigenvalues(A), eigenvectors(A)',
+              'the eigenvalues as a vector, and the eigenvectors as columns of a matrix',
+            ],
             ['dot(u, v), cross(u, v), norm(v)', 'for vectors'],
             ['[[1, 2], [3, 4]]  and  [1, 2, 3]', 'a matrix, and a column vector, written inline'],
             ['identity(3), zeros(2, 3), diag(1, 2, 3)', 'common matrices'],
           ].map(([code, text]) => h('li', {}, h('code', {}, code), ' \u2014 ', text)),
+        ),
+        h(
+          'p',
+          {},
+          'Click any line to see it drawn. A vector appears as an arrow (drag its tip to change it), a 2 by 2 or 3 by 3 matrix shows what it does to the plane or to space, and a product like A*x shows x being turned and stretched by A. Dashed lines mark eigenvectors.',
         ),
         h(
           'p',
@@ -550,15 +784,34 @@ export default {
         add('Vector', () => insertLine(matrixLine(nextName('uvwxyz'), 3, 1))),
         add('Calculation', () => insertLine({ kind: 'expr', text: '' })),
       ),
-      h('div', { class: 'tool-body mx-body' }, list, help),
+      h(
+        'div',
+        { class: 'tool-body mx-body' },
+        h('div', { class: 'mx-main' }, list, help),
+        h('aside', { class: 'mx-viz', 'aria-label': 'Picture of the selected line' }, stage, caption, controls),
+      ),
     );
 
     rebuild();
     evaluate();
+    const stopObserving = onResize(stage, () => active && drawViz());
+    const onTheme = () => active && drawViz();
+    document.addEventListener('clover:themechange', onTheme);
 
     return {
-      onShow: () => {},
+      onShow: () => {
+        active = true;
+        drawViz();
+      },
+      onHide: () => {
+        active = false;
+      },
       destroy: () => {
+        active = false;
+        cancelAnimationFrame(animation);
+        stopObserving();
+        detach();
+        document.removeEventListener('clover:themechange', onTheme);
         evaluateLater.cancel();
         for (const field of fields.values()) field.destroy?.();
       },
