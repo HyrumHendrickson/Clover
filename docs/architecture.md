@@ -7,7 +7,7 @@ index.html ── js/main.js ── core/app.js (App)
                               ├─ core/workspace.js   pure model, import/export validation
                               ├─ core/store.js       localStorage
                               ├─ core/menu|dialog|toast.js, mathfield.js, exprlist.js
-                              └─ tools/index.js ── graph | graph3d | notebook | matrix | complex | vectorfield | python
+                              └─ tools/index.js ── graph | graph3d | notebook | matrix | stats | complex | vectorfield | python
                                                     └─ lib/ expr, complexmath, viewport, domain, field, ...
 python tool ── postMessage ── runner/index.html (sandboxed iframe) ── vendor/skulpt
 ```
@@ -34,6 +34,14 @@ python tool ── postMessage ── runner/index.html (sandboxed iframe) ─�
 - `analysis.js` finds intercepts, extrema, and intersections of explicit functions. `view.js` is a viewport whose axes scale independently.
 
 While you pan, zoom, or drag a slider the tool renders at reduced quality, then redraws in full once input settles.
+
+## Rows, tables, and folders
+
+`lib/graph/rows.js` is pure. It validates saved rows, keeps folders consistent (a folder's rows always follow it), and expands tables for the model: a table becomes ordinary rows (`x_1 = [1, 2, 3]` for a typed column, a value row for a computed one, `(x_1, y_1)` for a plotted one), so dependency ordering, errors, and use from other rows need no special cases. `GraphModel.update` does the expansion itself, so the 3D graph gets tables too, with plotting off. `~` rows are regression plans: the unknown names become definitions ordered after the data they use, and the fit runs inside the normal evaluation pass (`lib/fit.js`). `core/structrows.js` builds the folder, table, and options-menu rows for both lists.
+
+## Statistics
+
+`lib/stats.js` (distributions, descriptive statistics, tests) and `lib/fit.js` (least squares) are pure and checked against SciPy and NumPy values in `tests/stats.test.js`. `lib/statchart.js` turns data into chart descriptions that a test can read, then paints them. The graphing language reaches the same code through the `distcall` node and the statistics builtins in `compile.js`.
 
 ## Python
 

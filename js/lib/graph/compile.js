@@ -6,7 +6,8 @@
  * variables bound by sum, prod, int, and for. Nothing here uses eval or
  * Function, so the app can run under a strict Content-Security-Policy.
  */
-import { BINDERS, CONSTANT_VALUES, FUNCTION_NAMES, isFunctionName } from './names.js';
+import { BINDERS, CONSTANT_VALUES, DIST_NAMES, FUNCTION_NAMES, isFunctionName } from './names.js';
+import { DISTRIBUTIONS, correlation, covariance, inverseCdf, spearman } from '../stats.js';
 import {
   GraphEvalError,
   MAX_LIST,
@@ -26,7 +27,10 @@ import {
   makeRange,
   mapNumbers,
   mapNumbers2,
+  pairStat,
+  quantileOf,
   mean,
+  meanAbsDev,
   median,
   nCr,
   nPr,
@@ -41,6 +45,8 @@ import {
   tanDeg,
   total,
   uniqueList,
+  variance,
+  variancep,
 } from './values.js';
 
 export class GraphCompileError extends Error {
@@ -126,8 +132,8 @@ function makeBuiltins(angle) {
     ceil: num1(1, 1, Math.ceil),
     round: { min: 1, max: 2, num1: (x) => roundTo(x), num2: roundTo },
     mod: { min: 2, max: 2, num2: (a, b) => (b === 0 ? NaN : a - b * Math.floor(a / b)) },
-    gcd: { min: 2, max: 2, num2: gcd },
-    lcm: { min: 2, max: 2, num2: lcm },
+    gcd: { min: 2, max: Infinity, any: (v) => v.reduce((a, b) => mapNumbers2('gcd', gcd, a, b)) },
+    lcm: { min: 2, max: Infinity, any: (v) => v.reduce((a, b) => mapNumbers2('lcm', lcm, a, b)) },
     nCr: { min: 2, max: 2, num2: nCr },
     nPr: { min: 2, max: 2, num2: nPr },
     min: {
@@ -146,6 +152,20 @@ function makeBuiltins(angle) {
     median: aggregate(median),
     stdev: aggregate(stdev),
     stdevp: aggregate(stdevp),
+    count: aggregate(listLength),
+    var: aggregate(variance),
+    varp: aggregate(variancep),
+    quantile: { min: 2, max: 2, any: ([l, q]) => mapNumbers('quantile', (p) => quantileOf(l, p), q) },
+    quartile: {
+      min: 2,
+      max: 2,
+      any: ([l, q]) => mapNumbers('quartile', (n) => (n >= 0 && n <= 4 ? quantileOf(l, n / 4, 'quartile') : NaN), q),
+    },
+    mad: aggregate(meanAbsDev),
+    cov: pairStat('cov', (a, b) => covariance(a, b)),
+    covp: pairStat('covp', (a, b) => covariance(a, b, true)),
+    corr: pairStat('corr', correlation),
+    spearman: pairStat('spearman', spearman),
     sort: aggregate(sortList),
     unique: aggregate(uniqueList),
     join: { min: 1, max: Infinity, any: joinLists },
@@ -155,12 +175,56 @@ function makeBuiltins(angle) {
 }
 
 /** Names handled outside the builtin table. */
-const SPECIAL_FUNCTIONS = new Set(BINDERS);
+const SPECIAL_FUNCTIONS = new Set([...BINDERS, ...Object.keys(DIST_NAMES)]);
 
 /** Every name the parser treats as a function must be compilable. Checked by tests. */
 export function unimplementedFunctions() {
   const table = makeBuiltins('rad');
   return FUNCTION_NAMES.filter((name) => !table[name] && !SPECIAL_FUNCTIONS.has(name));
+}
+
+/* ---------------------------------------------------------- distributions */
+
+/**
+ * `normaldist(0, 1).pdf(x)`, `.cdf(x)`, `.cdf(a, b)`, and `.inversecdf(p)`. Parameters may be
+ * left off to use the distribution's defaults (a standard normal, a uniform on 0 to 1).
+ */
+function compileDistribution(node, cx) {
+  const spec = DISTRIBUTIONS[DIST_NAMES[node.dist]];
+  if (node.params.length > spec.params.length) {
+    throw new GraphCompileError(`${node.dist}() takes at most ${spec.params.length} values.`);
+  }
+  const needs = { pdf: [1, 1], cdf: [1, 2], inversecdf: [1, 1] }[node.method];
+  if (node.args.length < needs[0] || node.args.length > needs[1]) {
+    throw new GraphCompileError(
+      `.${node.method}() takes ${needs[0] === needs[1] ? needs[0] : `${needs[0]} or ${needs[1]}`} value${needs[1] > 1 ? 's' : ''}.`,
+    );
+  }
+  if (node.auto && spec.discrete) {
+    throw new GraphCompileError(
+      `${node.dist}(...) has separate values, not a curve. Add .pdf with a list, like ${node.dist}(${spec.params.map((p) => p.value).join(', ')}).pdf([0...10]).`,
+    );
+  }
+  const params = node.params.map((p) => compileNode(p, cx));
+  const args = node.args.map((a) => compileNode(a, cx));
+  const label = `${node.dist}().${node.method}`;
+  return (env) => {
+    const given = params.map((f) => f(env));
+    const values = {};
+    spec.params.forEach((p, i) => {
+      const v = i < given.length ? given[i] : p.value;
+      if (typeof v !== 'number') throw new GraphEvalError(`${node.dist}() needs single numbers for its values.`);
+      values[p.key] = v;
+    });
+    const dist = spec.make(values);
+    if (!dist) throw new GraphEvalError(`${node.dist}() has a value outside what that distribution allows.`);
+    const [a, b] = args.map((f) => f(env));
+    if (node.method === 'pdf') return mapNumbers(label, dist.pdf, a);
+    if (node.method === 'inversecdf') return mapNumbers(label, (p) => inverseCdf(dist, spec.discrete, p), a);
+    if (b === undefined) return mapNumbers(label, dist.cdf, a);
+    // P(a <= X <= b); a discrete distribution includes both ends.
+    return mapNumbers2(label, (lo, hi) => dist.cdf(hi) - dist.cdf(spec.discrete ? Math.ceil(lo) - 1 : lo), a, b);
+  };
 }
 
 /* ------------------------------------------------------------------- scope */
@@ -783,6 +847,8 @@ export function compileNode(node, cx) {
         return otherwise ? otherwise(env) : NaN;
       };
     }
+    case 'distcall':
+      return compileDistribution(node, cx);
     case 'dot': {
       const target = compileNode(node.target, cx);
       const field = node.field;

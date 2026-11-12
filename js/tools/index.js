@@ -6,10 +6,11 @@ import matrix from './matrix.js';
 import notebook from './notebook.js';
 import python from './python.js';
 import { registerTools } from './registry.js';
+import stats from './stats.js';
 import vectorfield from './vectorfield.js';
 
 /** Every tool Clover can open, in launcher order. */
-export const TOOL_LIST = [graph, graph3d, notebook, matrix, geometry, complex, vectorfield, python];
+export const TOOL_LIST = [graph, graph3d, notebook, matrix, geometry, stats, complex, vectorfield, python];
 
 /** Tools keyed by type, as stored in saved workspaces. */
 export const TOOLS = Object.fromEntries(TOOL_LIST.map((tool) => [tool.type, tool]));

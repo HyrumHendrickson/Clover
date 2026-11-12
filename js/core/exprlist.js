@@ -6,6 +6,8 @@
  * and the list reads each row's `info` from `model.info(id)`.
  */
 import { icon } from './icons.js';
+import { buildFolderRow, buildTableRow, commitRows, createRowMenu } from './structrows.js';
+import { emptyTable, isCollapsed, moveRow, nextTableNames, normalizeRowList } from '../lib/graph/rows.js';
 import { createMathField } from './mathfield.js';
 import { debounce, h, uid } from './dom.js';
 import { ROW_COLORS, rowColor } from '../lib/graph/draw.js';
@@ -14,7 +16,6 @@ import { formatNumber } from '../lib/graph/values.js';
 
 export const MAX_TEXT = 500;
 const MAX_FIELD = 40;
-const ID_PATTERN = /^[A-Za-z0-9_-]{1,24}$/;
 const SLIDER_SECONDS = 8;
 const RANGE_VARS = ['t', 'u', 'v', 'theta'];
 
@@ -34,6 +35,8 @@ export const emptyRow = (id, color) => ({
   tmin: '',
   tmax: '',
   ranges: {},
+  folder: '',
+  style: {},
 });
 
 function cleanRanges(raw) {
@@ -50,41 +53,8 @@ function cleanRanges(raw) {
  * Validate rows from saved or imported state. Ids stay unique, colours stay in
  * the palette, text stays bounded. `taken` lets a tool keep ids unique across lists.
  */
-export function normalizeRows(raw, { max = 60, taken = new Set(), startColor = 0 } = {}) {
-  const entries = (Array.isArray(raw) ? raw : []).filter((r) => r && typeof r === 'object').slice(0, max);
-  const own = new Set();
-  const ids = entries.map((r) => {
-    if (typeof r.id === 'string' && ID_PATTERN.test(r.id) && !taken.has(r.id) && !own.has(r.id)) {
-      own.add(r.id);
-      return r.id;
-    }
-    return null;
-  });
-  let n = 0;
-  const fresh = () => {
-    do n += 1;
-    while (taken.has(`r${n}`) || own.has(`r${n}`));
-    own.add(`r${n}`);
-    return `r${n}`;
-  };
-  const rows = entries.map((r, i) => ({
-    id: ids[i] ?? fresh(),
-    kind: r.kind === 'note' ? 'note' : 'expr',
-    text: cleanText(r.text),
-    color:
-      Number.isInteger(r.color) && r.color >= 0 && r.color < ROW_COLORS.length
-        ? r.color
-        : (startColor + i) % ROW_COLORS.length,
-    hidden: r.hidden === true,
-    min: cleanField(r.min),
-    max: cleanField(r.max),
-    step: cleanField(r.step),
-    tmin: cleanField(r.tmin),
-    tmax: cleanField(r.tmax),
-    ranges: cleanRanges(r.ranges),
-  }));
-  for (const id of own) taken.add(id);
-  return rows;
+export function normalizeRows(raw, { max = 60, taken = new Set(), startColor = 0, structured = false } = {}) {
+  return normalizeRowList(raw, { max, taken, startColor, structured, ranges: cleanRanges });
 }
 
 const isDark = () => document.documentElement.dataset.theme === 'dark';
@@ -103,6 +73,7 @@ const isDark = () => document.documentElement.dataset.theme === 'dark';
  * @param {boolean} [options.compact] no colour dot or colour button (calculation rows)
  * @param {string} [options.placeholder]
  * @param {(info: any, row: object) => string} [options.hint] muted text under a row, such as where it can be graphed
+ * @param {boolean} [options.structured] folders, tables, and a row options menu (the 3D graph)
  * @param {{ onEnter?: (row: object) => boolean, onBackspaceEmpty?: (row: object) => boolean }} [options.hooks]
  */
 export function createExprList(options) {
@@ -120,6 +91,7 @@ export function createExprList(options) {
     placeholder = 'Type an expression, like y = x^2',
     hint = () => '',
     hooks = {},
+    structured = false,
   } = options;
 
   const list = h('ol', { class: `gr-list${compact ? ' gr-compact' : ''}` });
@@ -143,7 +115,13 @@ export function createExprList(options) {
       ctx.notify(`You can have up to ${maxRows} rows here. Delete one to add another.`);
       return null;
     }
-    const row = { ...emptyRow(uid('r'), nextColor()), ...init };
+    const after = afterId === null ? null : rowById(afterId);
+    const inherited = structured && after ? (after.kind === 'folder' ? after.id : (after.folder ?? '')) : '';
+    const row = {
+      ...emptyRow(uid('r'), nextColor()),
+      ...(init.kind === 'folder' ? {} : { folder: inherited }),
+      ...init,
+    };
     const at = afterId === null ? rows.length : rows.findIndex((r) => r.id === afterId) + 1;
     rows.splice(at, 0, row);
     rebuild();
@@ -158,7 +136,7 @@ export function createExprList(options) {
     if (index < 0) return;
     playing.delete(id);
     if (rows.length === 1) {
-      Object.assign(rows[0], emptyRow(rows[0].id, rows[0].color));
+      rows.splice(0, 1, emptyRow(rows[0].id, rows[0].color));
       rebuild();
       onChange();
       ctx.save();
@@ -190,17 +168,28 @@ export function createExprList(options) {
 
   function onKey(event, row) {
     const index = rows.findIndex((r) => r.id === row.id);
-    if (event.key === 'Enter') {
+    const showing = (step) => {
+      for (let i = index + step; i >= 0 && i < rows.length; i += step) if (!isCollapsed(rows, rows[i])) return rows[i];
+      return null;
+    };
+    if (structured && event.altKey && (event.key === 'ArrowUp' || event.key === 'ArrowDown')) {
+      event.preventDefault();
+      const next = moveRow(rows, row.id, event.key === 'ArrowUp' ? -1 : 1);
+      if (next !== rows) {
+        commitRows(env, next);
+        focusRow(row.id);
+      }
+    } else if (event.key === 'Enter') {
       event.preventDefault();
       recompileLater.flush();
       if (hooks.onEnter?.(row)) return;
       addRow(row.id);
-    } else if (event.key === 'ArrowDown' && rows[index + 1]) {
+    } else if (event.key === 'ArrowDown' && showing(1)) {
       event.preventDefault();
-      focusRow(rows[index + 1].id);
-    } else if (event.key === 'ArrowUp' && index > 0) {
+      focusRow(showing(1).id);
+    } else if (event.key === 'ArrowUp' && showing(-1)) {
       event.preventDefault();
-      focusRow(rows[index - 1].id);
+      focusRow(showing(-1).id);
     } else if (event.key === 'Backspace' && row.text === '') {
       if (hooks.onBackspaceEmpty?.(row)) {
         event.preventDefault();
@@ -209,6 +198,33 @@ export function createExprList(options) {
         removeRow(row.id);
       }
     }
+  }
+
+  const env = {
+    rows,
+    ctx,
+    rebuild: () => rebuild(),
+    onChange: () => onChange(),
+    onVisual: () => onVisual(),
+    removeRow: (id) => removeRow(id),
+    plot: false,
+  };
+
+  function addTable() {
+    if (rows.length >= maxRows) {
+      ctx.notify(`You can have up to ${maxRows} rows here. Delete one to add another.`);
+      return;
+    }
+    const table = emptyTable(uid('r'), nextColor(), nextTableNames(rows));
+    rows.push(table);
+    rebuild();
+    onChange();
+    ctx.save();
+    focusRow(table.id);
+  }
+
+  function addFolder() {
+    addRow(null, { kind: 'folder', text: '', collapsed: false, hidden: false });
   }
 
   /* ----------------------------------------------------------------- rows */
@@ -405,7 +421,13 @@ export function createExprList(options) {
         refs.error,
         refs.add,
       ),
-      h('div', { class: 'gr-actions' }, note || compact ? null : refs.color, refs.remove),
+      h(
+        'div',
+        { class: 'gr-actions' },
+        note || compact ? null : refs.color,
+        structured ? createRowMenu(row, env, { styled: false }) : null,
+        refs.remove,
+      ),
     );
     return refs;
   }
@@ -414,9 +436,14 @@ export function createExprList(options) {
     rowEls.clear();
     list.replaceChildren();
     rows.forEach((row, index) => {
-      const refs = buildRow(row, index);
+      let refs;
+      if (structured && row.kind === 'folder') refs = { ...buildFolderRow(row, index, env), struct: true };
+      else if (structured && row.kind === 'table') refs = { ...buildTableRow(row, index, env), struct: true };
+      else refs = buildRow(row, index);
       rowEls.set(row.id, refs);
       refs.li.classList.toggle('is-selected', row.id === selectedId);
+      refs.li.classList.toggle('in-folder', row.kind !== 'folder' && Boolean(row.folder));
+      refs.li.hidden = isCollapsed(rows, row);
       list.append(refs.li);
     });
     syncAll();
@@ -431,6 +458,10 @@ export function createExprList(options) {
     const row = rowById(id);
     if (!refs || !row) return;
     const info = model.info(id);
+    if (refs.struct) {
+      refs.sync?.(info);
+      return;
+    }
     const color = rowColor(row.color, isDark());
     refs.li.dataset.kind = info?.kind ?? 'empty';
 
@@ -599,6 +630,8 @@ export function createExprList(options) {
     syncAll,
     syncRow,
     addRow,
+    addTable,
+    addFolder,
     removeRow,
     focusRow,
     flush: () => recompileLater.flush(),

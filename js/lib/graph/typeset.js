@@ -463,7 +463,15 @@ const span = (cls, ...children) => h('span', { class: cls }, ...children);
  * `data-p` and `data-e` so a selection can be drawn over them.
  */
 function createRenderer(anchors) {
-  const mark = (o) => (anchors ? h('span', { class: 'mf-a', 'data-o': String(o) }) : null);
+  /** Offsets in the order the caret should visit them: the order they are drawn, except that a big operator lists its slots reading order. */
+  const order = [];
+  /** Groups of slots stacked on one another, top row first, for the Up and Down keys. */
+  const vertical = [];
+  const mark = (o) => {
+    if (!anchors) return null;
+    order.push(o);
+    return h('span', { class: 'mf-a', 'data-o': String(o) });
+  };
 
   /** Text split so a marker sits between its characters (when each one is a source character). */
   function chars(text, from) {
@@ -546,6 +554,7 @@ function createRenderer(anchors) {
       case 'sup':
         return span('mt-supwrap', ...seq([n.base], { from: n.base.p, to: n.base.e }), span('mt-sup', ...slot(n.xr)));
       case 'frac':
+        vertical.push([[n.nr], [n.dr]]);
         return span('mt-frac', span('mt-num', ...slot(n.nr)), span('mt-den', ...slot(n.dr)));
       case 'sqrt':
         return span(
@@ -570,32 +579,75 @@ function createRenderer(anchors) {
         );
       case 'big': {
         const { v, lo, hi, body } = n.parts;
-        const hiEls = filled(hi, n.upper);
-        const loEls = n.side
-          ? filled(lo, n.lower)
-          : [...(v ? slot(v) : [span('mt-gap')]), span('mt-o mt-rel', '='), ...(lo ? slot(lo) : [span('mt-gap')])];
+        // Slots are built in the order the caret visits them: a sum or product reads its index variable, start,
+        // end, then body; an integral reads its lower limit, upper limit, body, then the variable of integration.
+        const varEls = () => (v ? slot(v) : [span('mt-gap')]);
+        const loEls = () => (lo ? slot(lo) : n.side ? filled(null, n.lower) : [span('mt-gap')]);
+        const hiEls = () => (hi ? slot(hi) : filled(null, n.upper));
+        const bodyEls = () => (body ? slot(body) : [span('mt-gap')]);
+        let lower;
+        let upper;
+        let main;
+        let diff = null;
+        if (n.side) {
+          lower = loEls();
+          upper = hiEls();
+          main = bodyEls();
+          diff = span(
+            'mt-diff',
+            span('mt-f', 'd'),
+            ...(v ? slot(v) : n.differential ? [renderNode(n.differential)] : [span('mt-gap')]),
+          );
+          if (lo && hi) vertical.push([[hi], [lo]]);
+        } else {
+          const variable = varEls();
+          const start = loEls();
+          lower = [...variable, span('mt-o mt-rel', '='), ...start];
+          upper = hiEls();
+          main = bodyEls();
+          if (v && lo && hi) vertical.push([[hi], [v, lo]]);
+        }
         const stack = n.side
           ? span(
               'mt-bigside',
               span('mt-sym mt-sym-int', n.sym),
-              span('mt-lims', span('mt-lim', ...hiEls), span('mt-lim', ...loEls)),
+              span('mt-lims', span('mt-lim', ...upper), span('mt-lim', ...lower)),
             )
-          : span('mt-bigstack', span('mt-lim', ...hiEls), span('mt-sym', n.sym), span('mt-lim', ...loEls));
-        const diff = n.side
-          ? span(
-              'mt-diff',
-              span('mt-f', 'd'),
-              ...(v ? slot(v) : n.differential ? [renderNode(n.differential)] : [span('mt-gap')]),
-            )
-          : null;
-        return span('mt-big', stack, span('mt-body', ...(body ? slot(body) : [span('mt-gap')])), diff);
+          : span('mt-bigstack', span('mt-lim', ...upper), span('mt-sym', n.sym), span('mt-lim', ...lower));
+        return span('mt-big', stack, span('mt-body', ...main), diff);
       }
       default:
         return span('mt-t');
     }
   }
 
-  return { seq, mark };
+  return { seq, mark, order, vertical };
+}
+
+/**
+ * Render `source` as typeset math and report how the caret moves through it.
+ * `order` lists every caret offset in the order Left and Right visit them (a sum,
+ * product, or integral lists its slots in reading order, which is not always the
+ * order they appear in the text). `vertical` lists groups of slots stacked on top
+ * of each other, such as a numerator over a denominator, for Up and Down.
+ *
+ * @param {string} source
+ * @returns {{ el: HTMLElement, order: number[], vertical: { from: number, to: number }[][][] }}
+ */
+export function typesetField(source) {
+  const root = span('mt');
+  let order = [];
+  let vertical = [];
+  try {
+    const { nodes, length } = layoutWithLength(source);
+    const renderer = createRenderer(true);
+    root.append(...renderer.seq(nodes, { from: 0, to: length }));
+    order = [...new Set(renderer.order)];
+    vertical = renderer.vertical;
+  } catch {
+    root.replaceChildren(document.createTextNode(String(source ?? '')));
+  }
+  return { el: root, order, vertical };
 }
 
 /**
@@ -604,10 +656,11 @@ function createRenderer(anchors) {
  * @param {{ anchors?: boolean }} [options] mark every caret position (used by the math field)
  */
 export function typeset(source, { anchors = false } = {}) {
+  if (anchors) return typesetField(source).el;
   const root = span('mt');
   try {
     const { nodes, length } = layoutWithLength(source);
-    const { seq } = createRenderer(anchors);
+    const { seq } = createRenderer(false);
     root.append(...seq(nodes, { from: 0, to: length }));
   } catch {
     root.replaceChildren(document.createTextNode(String(source ?? '')));
@@ -620,6 +673,9 @@ export function typeset(source, { anchors = false } = {}) {
 /** Words that turn into a symbol as soon as they are typed. */
 const AUTO_REPLACE = { ...GREEK, sum: '\u2211', prod: '\u220f', int: '\u222b' };
 
+/** Which slot the caret starts in after a big operator is inserted, as an offset past its sign. */
+const TEMPLATE_START = { sum: 2, prod: 2, int: 3 };
+
 /**
  * Replace a name the person has just finished typing with its symbol: Greek names
  * become letters, and sum, prod, and int become the summation, product, and
@@ -627,14 +683,25 @@ const AUTO_REPLACE = { ...GREEK, sum: '\u2211', prod: '\u220f', int: '\u222b' };
  * only when it is exactly one of the names (so `theta` becomes \u03b8 but `beta` is
  * not read as `eta`).
  *
- * @returns {{ text: string, caret: number }}
+ * With `templates` on, a sum, product, or integral that is not already followed by
+ * an opening bracket comes with all four empty slots, `\u2211(,,,)`, and the caret sits in
+ * the first one, so every box that needs a value can be reached with the arrow keys.
+ *
+ * @returns {{ text: string, caret: number, template?: boolean }}
  */
-export function autoSymbols(text, caret = text.length) {
+export function autoSymbols(text, caret = text.length, { templates = false } = {}) {
   const before = text.slice(0, caret);
   const run = /[A-Za-z]+$/.exec(before);
   if (!run || !Object.hasOwn(AUTO_REPLACE, run[0])) return { text, caret };
   const start = run.index;
   if (before[start - 1] === '_' || before[start - 1] === '{') return { text, caret };
   const letter = AUTO_REPLACE[run[0]];
+  if (templates && Object.hasOwn(TEMPLATE_START, run[0]) && text[caret] !== '(') {
+    return {
+      text: `${text.slice(0, start)}${letter}(,,,)${text.slice(caret)}`,
+      caret: start + TEMPLATE_START[run[0]],
+      template: true,
+    };
+  }
   return { text: text.slice(0, start) + letter + text.slice(caret), caret: start + letter.length };
 }

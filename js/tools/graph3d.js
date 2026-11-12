@@ -3,6 +3,7 @@ import { createExprList, emptyRow, normalizeRows } from '../core/exprlist.js';
 import { icon } from '../core/icons.js';
 import { evaluateNumber } from '../lib/expr.js';
 import { rowColor } from '../lib/graph/draw.js';
+import { isHidden } from '../lib/graph/rows.js';
 import { GraphEvalError, formatNumber } from '../lib/graph/values.js';
 import { Camera, DEFAULT_CAMERA, PRESET_VIEWS, normalizeCamera } from '../lib/graph3d/camera.js';
 import {
@@ -63,7 +64,7 @@ function normalizeBounds(raw) {
 }
 
 function normalize(raw) {
-  const rows = normalizeRows(raw?.rows, { max: MAX_ROWS });
+  const rows = normalizeRows(raw?.rows, { max: MAX_ROWS, structured: true });
   if (rows.length === 0) rows.push({ ...emptyRow('r1', 1), text: SAMPLE });
   return {
     rows,
@@ -163,7 +164,7 @@ export default {
       const errors = new Map();
       for (const row of state.rows) {
         const plot = model.info(row.id)?.plot;
-        if (row.kind === 'note' || row.hidden || !plot) continue;
+        if (row.kind === 'note' || isHidden(state.rows, row) || !plot) continue;
         try {
           next.set(row.id, buildGeometry(plot, box, tier));
         } catch (error) {
@@ -198,7 +199,7 @@ export default {
       const items = [];
       for (const row of state.rows) {
         const mesh = geometry.get(row.id);
-        if (!mesh || row.hidden || row.kind === 'note') continue;
+        if (!mesh || isHidden(state.rows, row) || row.kind === 'note') continue;
         items.push({ id: row.id, color: rowColor(row.color, dark), ...mesh });
       }
       const result = renderScene(g, camera, new Box(state.bounds), items, {
@@ -208,7 +209,7 @@ export default {
         wire: state.wire,
         fast,
       });
-      const empty = items.length === 0 && state.rows.every((r) => r.text.trim() === '');
+      const empty = items.length === 0 && state.rows.every((r) => r.kind !== 'table' && (r.text ?? '').trim() === '');
       status.hidden = !empty;
       status.textContent = empty ? 'Type an expression, like z = x^2 - y^2' : '';
       return result;
@@ -240,6 +241,7 @@ export default {
     }
 
     const rows = createExprList({
+      structured: true,
       rows: state.rows,
       model,
       ctx,
@@ -544,6 +546,8 @@ export default {
           { class: 'btn btn-quiet', type: 'button', onclick: () => rows.addRow(null, { kind: 'note' }) },
           'Add note',
         ),
+        h('button', { class: 'btn btn-quiet', type: 'button', onclick: () => rows.addTable() }, 'Add table'),
+        h('button', { class: 'btn btn-quiet', type: 'button', onclick: () => rows.addFolder() }, 'Add folder'),
       ),
       h(
         'details',

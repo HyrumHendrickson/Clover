@@ -6,6 +6,13 @@ All notable changes are documented here. The format follows [Keep a Changelog](h
 
 ### Added
 
+- A Statistics tab: data columns (paste from a spreadsheet), summaries with histogram, box plot, and dot plot, regression (linear, quadratic, cubic, exponential, power, logarithmic) with R² and residuals, probability distributions with shaded probabilities and inverse values, and t, z, proportion, and chi-square tests.
+- Tables in the Graphing and 3D tools: typed columns define lists, computed columns fill themselves, spreadsheet paste, and per-column dots, lines, and colour.
+- Folders that collapse, hide, and group rows; rows can be moved with Alt+Arrow or the options menu.
+- Per-row style: line style, width, opacity, point shape and size, and fill opacity.
+- Regression rows written with `~`, such as `y_1 ~ a x_1 + b`.
+- `count`, `var`, `varp`, `quantile`, `quartile`, `mad`, `cov`, `covp`, `corr`, `spearman`, multi-value `gcd` and `lcm`, and Desmos-style distributions such as `normaldist(0, 1).cdf(1.96)`.
+- docs/desmos-parity.md compares Clover with Desmos's documented features.
 - A Geometry tool for Euclidean geometry with an exact engine. Claims are proved only when exact algebra shows they hold for every position of the free points, and refuted only by an exact counterexample; nothing is measured. The figure on screen is checked exactly too and reported separately.
 - Notebook cells can embed any other tool, each with its own saved state.
 - Math fields are edited as typeset math, in place, with a caret inside exponents, fractions, and roots. Brackets close themselves, and Tab moves between the arguments of a sum.
@@ -18,6 +25,8 @@ All notable changes are documented here. The format follows [Keep a Changelog](h
 
 ### Changed
 
+- Typing `sum`, `prod`, or `int` now inserts every box (index, limits, body) and the arrow keys visit all of them in reading order; Up and Down move between stacked boxes. Previously the boxes could not be reached until the commas were typed by hand. Typing the old `sum(k, 1, 10, k^2)` form still works.
+- File format version 4. Older files open unchanged.
 - The Matrices tool is a sheet: type `matrix` or use the buttons to create a named grid of any size, then calculate with `A+B`, `A*B`, `A^-1`, `det(A)`, `solve(A, b)`, and more on later lines. Arithmetic is exact. The old multiplication walkthrough and 2×2 picture are removed.
 - File format version 3. Older files still open; saved matrix tabs are converted to lines.
 - The Desmos embed is replaced by the Graphing tool, and the Content-Security-Policy no longer allows frames from desmos.com.

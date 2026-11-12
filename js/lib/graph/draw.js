@@ -127,7 +127,17 @@ export function drawAxes(g, view, colors, { grid = true, minor = true, numbers =
 
 let scratch = null;
 
-function strokePaths(g, paths, color, width, dash = null) {
+const DASHES = { solid: null, dashed: [8, 6], dotted: [2, 5] };
+
+/** Dash pattern for a line style name, scaled a little with the width. */
+export const dashFor = (line, width = 2.5) => {
+  const base = DASHES[line] ?? null;
+  return base ? base.map((n) => n * Math.max(1, width / 2.5)) : null;
+};
+
+function strokePaths(g, paths, color, width, dash = null, alpha = 1) {
+  g.save();
+  g.globalAlpha = alpha;
   g.strokeStyle = color;
   g.lineWidth = width;
   g.lineJoin = 'round';
@@ -140,10 +150,11 @@ function strokePaths(g, paths, color, width, dash = null) {
     g.stroke();
   }
   g.setLineDash([]);
+  g.restore();
 }
 
-function drawRegion(g, view, plot, color, fast) {
-  const raster = rasterRegion(plot.region, view, { cell: fast ? 4 : 2, color: hexToRgb(color), alpha: 0.3 });
+function drawRegion(g, view, plot, color, fast, fill = 0.3) {
+  const raster = rasterRegion(plot.region, view, { cell: fast ? 4 : 2, color: hexToRgb(color), alpha: fill });
   if (raster.filled > 0) {
     scratch ??= document.createElement('canvas');
     scratch.width = raster.cols;
@@ -159,26 +170,113 @@ function drawRegion(g, view, plot, color, fast) {
   }
 }
 
-function drawPoints(g, view, value, color, colors) {
-  const list = value instanceof Point ? [value] : value.slice(0, 5000);
-  const dots = [];
-  g.save();
-  g.fillStyle = color;
-  g.strokeStyle = colors.bg;
-  g.lineWidth = 2;
-  for (const p of list) {
-    if (!Number.isFinite(p.x) || !Number.isFinite(p.y)) continue;
-    const sx = view.toScreenX(p.x);
-    const sy = view.toScreenY(p.y);
-    if (sx < -10 || sx > view.width + 10 || sy < -10 || sy > view.height + 10) continue;
-    g.beginPath();
-    g.arc(sx, sy, 5, 0, Math.PI * 2);
-    g.stroke();
-    g.fill();
-    dots.push({ sx, sy, x: p.x, y: p.y });
+/** Trace one marker shape centred on a point. `size` is the diameter. */
+function markerPath(g, shape, x, y, size) {
+  const r = size / 2;
+  g.beginPath();
+  switch (shape) {
+    case 'square':
+      g.rect(x - r, y - r, size, size);
+      break;
+    case 'triangle':
+      g.moveTo(x, y - r);
+      g.lineTo(x + r, y + r * 0.8);
+      g.lineTo(x - r, y + r * 0.8);
+      g.closePath();
+      break;
+    case 'diamond':
+      g.moveTo(x, y - r * 1.2);
+      g.lineTo(x + r, y);
+      g.lineTo(x, y + r * 1.2);
+      g.lineTo(x - r, y);
+      g.closePath();
+      break;
+    case 'cross':
+      g.moveTo(x - r, y - r);
+      g.lineTo(x + r, y + r);
+      g.moveTo(x + r, y - r);
+      g.lineTo(x - r, y + r);
+      break;
+    case 'plus':
+      g.moveTo(x - r, y);
+      g.lineTo(x + r, y);
+      g.moveTo(x, y - r);
+      g.lineTo(x, y + r);
+      break;
+    case 'star':
+      for (let k = 0; k < 10; k += 1) {
+        const rad = k % 2 === 0 ? r * 1.2 : r * 0.5;
+        const ang = -Math.PI / 2 + (k * Math.PI) / 5;
+        if (k === 0) g.moveTo(x + rad * Math.cos(ang), y + rad * Math.sin(ang));
+        else g.lineTo(x + rad * Math.cos(ang), y + rad * Math.sin(ang));
+      }
+      g.closePath();
+      break;
+    default:
+      g.arc(x, y, r, 0, Math.PI * 2);
   }
-  g.restore();
-  return dots;
+}
+
+/** Markers that are drawn as lines, not as filled shapes. */
+const LINE_MARKERS = new Set(['cross', 'plus']);
+
+function drawPoints(g, view, value, color, colors, style = {}) {
+  const list = value instanceof Point ? [value] : value.slice(0, 5000);
+  const shape = style.point ?? 'point';
+  const size = style.size ?? 10;
+  const alpha = style.opacity ?? 1;
+  const dots = [];
+  const screen = [];
+  for (const p of list) {
+    if (!Number.isFinite(p.x) || !Number.isFinite(p.y)) {
+      screen.push(null);
+      continue;
+    }
+    screen.push([view.toScreenX(p.x), view.toScreenY(p.y)]);
+  }
+  const paths = [];
+  if (style.lines && screen.length > 1) {
+    let run = [];
+    const flush = () => {
+      if (run.length >= 4) paths.push(run);
+      run = [];
+    };
+    for (const pt of screen) {
+      if (pt === null) flush();
+      else run.push(pt[0], pt[1]);
+    }
+    flush();
+    strokePaths(g, paths, color, style.width ?? 2.5, dashFor(style.line, style.width ?? 2.5), alpha);
+  }
+  if (style.points !== false) {
+    g.save();
+    g.globalAlpha = alpha;
+    g.fillStyle = color;
+    g.strokeStyle = shape === 'point' ? colors.bg : color;
+    g.lineWidth = shape === 'point' ? 2 : 2.5;
+    list.forEach((p, i) => {
+      const pt = screen[i];
+      if (!pt) return;
+      const [sx, sy] = pt;
+      if (sx < -10 || sx > view.width + 10 || sy < -10 || sy > view.height + 10) return;
+      markerPath(g, shape, sx, sy, size);
+      if (!LINE_MARKERS.has(shape)) {
+        if (shape === 'open') {
+          g.fillStyle = colors.bg;
+          g.fill();
+          g.strokeStyle = color;
+          g.stroke();
+          g.fillStyle = color;
+        } else {
+          g.stroke();
+          g.fill();
+        }
+      } else g.stroke();
+      dots.push({ sx, sy, x: p.x, y: p.y });
+    });
+    g.restore();
+  }
+  return paths.length > 0 ? { dots, paths } : { dots };
 }
 
 /**
@@ -186,6 +284,9 @@ function drawPoints(g, view, value, color, colors) {
  */
 function drawPlot(g, view, item, theme, fast, width) {
   const { plot, color } = item;
+  const style = item.style ?? {};
+  const dash = dashFor(style.line, width);
+  const alpha = style.opacity ?? 1;
   const quality = fast ? 2 : 1;
   switch (plot.type) {
     case 'explicit':
@@ -196,7 +297,7 @@ function drawPlot(g, view, item, theme, fast, width) {
         const f = plot.lanes ? plot.lanes.at(i) : plot.f;
         paths.push(...sampleExplicit(f, plot.mask, view, { vertical: plot.type === 'explicitX', step: quality }));
       }
-      strokePaths(g, paths, color, width);
+      strokePaths(g, paths, color, width, dash, alpha);
       return { paths };
     }
     case 'polar': {
@@ -207,23 +308,23 @@ function drawPlot(g, view, item, theme, fast, width) {
         const f = plot.lanes ? plot.lanes.at(i) : plot.f;
         paths.push(...samplePolar(f, plot.mask, domain, view, { samples: fast ? 1000 : 2400 }));
       }
-      strokePaths(g, paths, color, width);
+      strokePaths(g, paths, color, width, dash, alpha);
       return { paths };
     }
     case 'param': {
       const paths = sampleParam(plot.at, plot.mask, plot.domain(), view, { samples: fast ? 500 : 1200 });
-      strokePaths(g, paths, color, width);
+      strokePaths(g, paths, color, width, dash, alpha);
       return { paths };
     }
     case 'implicit': {
       const paths = contourPaths(plot.F, view, { cell: fast ? 4 : 3, filter: plot.mask });
-      strokePaths(g, paths, color, width);
+      strokePaths(g, paths, color, width, dash, alpha);
       return { paths };
     }
     case 'points': {
       const value = plot.get();
       if (!isPointValue(value)) return {};
-      return { dots: drawPoints(g, view, value, color, theme.colors) };
+      return drawPoints(g, view, value, color, theme.colors, style);
     }
     default:
       return {};
@@ -259,11 +360,18 @@ export function renderGraph(g, view, items, theme) {
   for (const item of items) {
     if (item.plot.type !== 'ineq') continue;
     attempt(item, () => {
-      drawRegion(g, view, item.plot, item.color, fast);
+      drawRegion(g, view, item.plot, item.color, fast, item.style?.fill ?? 0.3);
       const paths = [];
       for (const b of item.plot.boundaries) {
         const part = contourPaths(b.F, view, { cell: fast ? 4 : 3, filter: b.others });
-        strokePaths(g, part, item.color, item.selected ? 4 : 2.5, b.strict ? [7, 6] : null);
+        strokePaths(
+          g,
+          part,
+          item.color,
+          item.selected ? 4 : (item.style?.width ?? 2.5),
+          b.strict ? [7, 6] : dashFor(item.style?.line),
+          item.style?.opacity ?? 1,
+        );
         paths.push(...part);
       }
       return { paths };
@@ -271,7 +379,7 @@ export function renderGraph(g, view, items, theme) {
   }
   for (const item of items) {
     if (item.plot.type === 'ineq') continue;
-    attempt(item, () => drawPlot(g, view, item, theme, fast, item.selected ? 4 : 2.5));
+    attempt(item, () => drawPlot(g, view, item, theme, fast, item.selected ? 4 : (item.style?.width ?? 2.5)));
   }
   return { geometry, errors };
 }

@@ -9,10 +9,12 @@
  * Pure: no DOM access, so it is unit tested in Node.
  */
 import { evaluateNumber } from '../expr.js';
-import { namesUsed } from './ast.js';
+import { fitLeastSquares, rSquared } from '../fit.js';
+import { namesUsed, substituteId } from './ast.js';
 import { Ctx, FnEntry, GraphCompileError, Scope, compileConditions, compileNode } from './compile.js';
 import { NOT_DEFINABLE, isFunctionName } from './names.js';
 import { GraphSyntaxError, parseExpression, parseStatement } from './parse.js';
+import { expandRows } from './rows.js';
 import { GraphEvalError, Point, formatNumber, formatValue } from './values.js';
 
 export const DEFAULT_SLIDER = { min: -10, max: 10 };
@@ -434,6 +436,9 @@ function blankInfo(row) {
     sliderError: null,
     domain: null,
     plot: null,
+    fit: null,
+    fitText: '',
+    table: null,
   };
 }
 
@@ -467,6 +472,10 @@ export class GraphModel {
     this.defOrder = [];
     this.valuePlans = [];
     this.plansById = new Map();
+    /** What `expandRows` made of each table, by the table's row id. */
+    this.tables = new Map();
+    this.regressions = [];
+    this.pass = 0;
   }
 
   /** Rebuild everything from the rows. Cheap enough to call on every edit. */
@@ -477,16 +486,23 @@ export class GraphModel {
     this.defOrder = [];
     this.valuePlans = [];
     this.plansById = new Map();
+    this.regressions = [];
 
+    const expanded = expandRows(rows, { plot: this.dimensions === 2 });
+    this.tables = expanded.tables;
     const pending = [];
-    for (const row of rows) {
+    for (const row of expanded.rows) {
       const info = blankInfo(row);
       this.infos.set(row.id, info);
-      if (row.kind === 'note') {
-        info.kind = 'note';
+      if (row.kind === 'note' || row.kind === 'folder' || row.kind === 'table') {
+        info.kind = row.kind;
         continue;
       }
       if ((row.text ?? '').trim() === '') continue;
+      if (row.text.includes('~')) {
+        this.planRegression(row, info);
+        continue;
+      }
       try {
         const stmt = parseStatement(row.text);
         const def = asDefinition(stmt, this.reserved);
@@ -501,13 +517,198 @@ export class GraphModel {
     }
 
     const defs = this.registerDefinitions(pending);
+    this.registerRegressions(defs);
     this.compileDefinitions(defs);
+    this.compileRegressions();
     this.orderDefinitions(defs);
     this.evaluateVars();
     this.attachSliders();
     this.compilePlots(pending);
+    this.compileRegressionPlots();
     this.refresh({ evaluate: false });
     return this.infos;
+  }
+
+  /* ---------------------------------------------------------- regressions */
+
+  /** Read `y_1 ~ a x_1 + b`: data on the left, a model with unknown values on the right. */
+  planRegression(row, info) {
+    try {
+      const sides = row.text.split('~');
+      if (sides.length !== 2) throw new GraphSyntaxError('A regression has one ~, like y_1 ~ a x_1 + b.');
+      const lhs = parseExpression(sides[0]);
+      const rhs = parseExpression(sides[1]);
+      info.kind = 'regression';
+      this.regressions.push({ row, info, lhs, rhs, cells: [], pseudos: [], pass: -1 });
+    } catch (error) {
+      fail(info, error);
+    }
+  }
+
+  /**
+   * The unknown names in a model are what the fit solves for. Each becomes a definition other rows
+   * can use, ordered after the data it depends on.
+   */
+  registerRegressions(defs) {
+    for (const reg of this.regressions) {
+      const known = (n) =>
+        this.scope.vars.has(n) ||
+        this.scope.fns.has(n) ||
+        this.reserved.has(n) ||
+        isFunctionName(n) ||
+        CONSTANT_NAMES.has(n);
+      const unknown = [...namesUsed(reg.rhs)].filter((n) => !known(n));
+      if (unknown.length === 0) {
+        fail(
+          reg.info,
+          new GraphCompileError(
+            'This model has no unknown values to solve for. Use letters that are not defined elsewhere, like a and b.',
+          ),
+        );
+        continue;
+      }
+      if (unknown.length > 8) {
+        fail(reg.info, new GraphCompileError('A regression can solve for at most 8 values.'));
+        continue;
+      }
+      for (const name of unknown) {
+        const cell = { name, value: 1 };
+        this.scope.vars.set(name, cell);
+        const pseudo = {
+          row: reg.row,
+          info: reg.info,
+          def: { kind: 'param', name },
+          cell,
+          refs: new Set(),
+          regression: reg,
+          broken: false,
+        };
+        defs.set(name, pseudo);
+        reg.cells.push(cell);
+        reg.pseudos.push(pseudo);
+      }
+    }
+  }
+
+  compileRegressions() {
+    for (const reg of this.regressions) {
+      if (reg.pseudos.length === 0) continue;
+      try {
+        const cx = new Ctx(this.scope, { dimensions: this.dimensions });
+        reg.lhsFn = compileNode(reg.lhs, cx);
+        reg.rhsFn = compileNode(reg.rhs, cx);
+        reg.env = cx.newEnv();
+        const own = new Set(reg.cells.map((c) => c.name));
+        const refs = new Set([...cx.refs].filter((n) => !own.has(n)));
+        for (const pseudo of reg.pseudos) pseudo.refs = refs;
+      } catch (error) {
+        fail(reg.info, error);
+        for (const pseudo of reg.pseudos) pseudo.broken = true;
+        for (const cell of reg.cells) cell.value = NaN;
+      }
+    }
+  }
+
+  /** Least squares: find the unknown values that make the model match the data as closely as possible. */
+  runRegression(reg) {
+    if (reg.pass === this.pass) return;
+    reg.pass = this.pass;
+    const { info } = reg;
+    info.runtimeError = null;
+    info.fit = null;
+    info.fitText = '';
+    try {
+      const y = reg.lhsFn(reg.env);
+      if (!Array.isArray(y) || y.length < 2 || y.some((v) => typeof v !== 'number')) {
+        throw new GraphEvalError('The left side of ~ needs a list of at least two numbers, like y_1.');
+      }
+      const model = (p) => {
+        reg.cells.forEach((c, i) => {
+          c.value = p[i];
+        });
+        const v = reg.rhsFn(reg.env);
+        if (typeof v === 'number') return y.map(() => v);
+        return Array.isArray(v) && v.length === y.length && v.every((t) => typeof t === 'number') ? v : null;
+      };
+      const residuals = (p) => {
+        try {
+          const m = model(p);
+          return m ? y.map((value, i) => value - m[i]) : null;
+        } catch (error) {
+          if (error instanceof GraphEvalError) return null;
+          throw error;
+        }
+      };
+      const fit = fitLeastSquares(residuals, reg.cells.length);
+      if (!fit) {
+        throw new GraphEvalError(
+          'No values fit this model to the data. Check that both sides use lists of the same length, or try a different model.',
+        );
+      }
+      // A value that is only rounding noise next to the others is zero, so b = 8e-16 reads as b = 0.
+      const scale = Math.max(...fit.p.map(Math.abs));
+      const settled = fit.p.map((v) => (Math.abs(v) < 1e-9 * scale ? 0 : v));
+      const predicted = model(settled);
+      const r2 = rSquared(y, predicted);
+      const params = Object.fromEntries(reg.cells.map((c) => [c.name, c.value]));
+      info.fit = { params, r2, n: y.length };
+      const shown = reg.cells.map((c) => `${c.name} = ${formatNumber(c.value, 6)}`);
+      info.fitText = `${shown.join(', ')}, R\u00b2 = ${formatNumber(r2, 4)}`;
+    } catch (error) {
+      if (!(error instanceof GraphEvalError)) throw error;
+      for (const c of reg.cells) c.value = NaN;
+      info.runtimeError = error.message;
+    }
+    this.scope.version += 1;
+  }
+
+  /** The fitted curve is drawn when the model has one list in it: that list stands for x. */
+  compileRegressionPlots() {
+    for (const reg of this.regressions) {
+      if (reg.info.error || reg.pseudos.length === 0) continue;
+      const own = new Set(reg.cells.map((c) => c.name));
+      const regressors = [...namesUsed(reg.rhs)].filter(
+        (n) => !own.has(n) && Array.isArray(this.scope.vars.get(n)?.value),
+      );
+      if (regressors.length !== 1) continue;
+      const rhs = substituteId(reg.rhs, regressors[0], { type: 'id', name: 'x' });
+      try {
+        reg.info.plot = compilePlot(
+          { kind: 'explicit', rhs, restrictions: null },
+          this.scope,
+          reg.row,
+          reg.info,
+          true,
+        ).plot;
+      } catch (error) {
+        fail(reg.info, error);
+      }
+    }
+  }
+
+  /** What each table shows beside its cells: problems, and the values of computed columns. */
+  finishTables() {
+    for (const [id, meta] of this.tables) {
+      const info = this.infos.get(id);
+      if (!info) continue;
+      info.table = {
+        used: meta.used,
+        columns: meta.columns.map((c) => {
+          let error = c.problem;
+          let values = null;
+          for (const sid of c.ids) {
+            const si = this.infos.get(sid);
+            error ??= si?.error ?? si?.runtimeError ?? null;
+            if (c.kind === 'computed' && Array.isArray(si?.value)) values = si.value;
+          }
+          if (!error && c.plotId) {
+            const pi = this.infos.get(c.plotId);
+            error = pi?.error ?? pi?.runtimeError ?? null;
+          }
+          return { kind: c.kind, error, values };
+        }),
+      };
+    }
   }
 
   registerDefinitions(pending) {
@@ -535,6 +736,7 @@ export class GraphModel {
   compileDefinitions(defs) {
     for (const plan of defs.values()) {
       const { def, info } = plan;
+      if (def.kind === 'param') continue;
       try {
         if (def.kind === 'var') {
           if (def.restrictions)
@@ -607,7 +809,12 @@ export class GraphModel {
 
   /** Evaluate variable definitions in dependency order. Sliders keep the value the user set. */
   evaluateVars() {
+    this.pass += 1;
     for (const plan of this.defOrder) {
+      if (plan.def.kind === 'param') {
+        this.runRegression(plan.regression);
+        continue;
+      }
       if (plan.def.kind !== 'var' || plan.info.slider) continue;
       try {
         plan.cell.value = plan.body(plan.env);
@@ -701,7 +908,9 @@ export class GraphModel {
       if (info.kind === 'var') info.value = this.plansById.get(info.id).cell.value;
       const shown = info.kind === 'var' || info.kind === 'value' ? info.value : undefined;
       info.valueText = info.slider || shown === undefined || isPointValue(shown) ? '' : formatValue(shown);
+      if (info.kind === 'regression') info.valueText = info.fitText;
     }
+    this.finishTables();
   }
 
   /** Move a slider. Returns false when the row is not a slider. */

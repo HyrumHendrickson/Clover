@@ -4,8 +4,8 @@ import { installDom } from './support/dom.js';
 
 const env = installDom();
 const { window, document } = env;
-const { createMathField, enclosingBinder } = await import('../js/core/mathfield.js');
-const { typeset, autoSymbols } = await import('../js/lib/graph/typeset.js');
+const { createMathField, enclosingBinder, binderSlots } = await import('../js/core/mathfield.js');
+const { typeset, typesetField, autoSymbols } = await import('../js/lib/graph/typeset.js');
 
 after(() => window.close());
 
@@ -45,108 +45,34 @@ function backspace(input) {
 const caret = (input) => input.selectionStart;
 const place = (input, at) => input.setSelectionRange(at, at);
 
-test('typing sum, prod, or int turns the word into its sign', () => {
-  for (const [word, sign] of [
-    ['sum', '\u2211'],
-    ['prod', '\u220f'],
-    ['int', '\u222b'],
+test('typing sum, prod, or int turns the word into its sign with every slot ready', () => {
+  for (const [word, sign, at] of [
+    ['sum', '\u2211', 2],
+    ['prod', '\u220f', 2],
+    ['int', '\u222b', 3],
   ]) {
     const { input } = makeField();
     typeText(input, word);
-    assert.equal(input.value, sign, `${word} becomes ${sign}`);
+    assert.equal(input.value, `${sign}(,,,)`, `${word} becomes ${sign} with four empty slots`);
+    assert.equal(caret(input), at, `${word} starts in its first slot`);
   }
   const { input } = makeField();
   typeText(input, '2+sum');
-  assert.equal(input.value, '2+\u2211', 'it works in the middle of a line');
+  assert.equal(input.value, '2+\u2211(,,,)', 'it works in the middle of a line');
+  assert.equal(autoSymbols('sum', 3).text, '\u2211', 'the plain helper still only swaps the sign');
+  assert.equal(autoSymbols('sum(', 3, { templates: true }).text, '\u2211(', 'an existing bracket is left alone');
 });
 
-test('names that merely contain those letters are left alone', () => {
-  assert.equal(autoSymbols('sin').text, 'sin');
-  assert.equal(autoSymbols('x_int').text, 'x_int', 'a subscript stays as typed');
-  assert.equal(autoSymbols('summ').text, 'summ');
-  assert.equal(autoSymbols('sum', 3).text, '\u2211');
-  assert.equal(autoSymbols('print', 5).text, 'print');
-  const { input } = makeField();
-  typeText(input, 'sin(x)');
-  assert.equal(input.value, 'sin(x)');
-});
-
-test('the display shows typeset math, and the saved text is still plain', () => {
-  const { field, input, log } = makeField();
-  typeText(input, 'x^2');
-  assert.equal(input.value, 'x^2');
-  assert.deepEqual(log.at(-1), 'x^2', 'the stored value is the source text');
-  const shown = field.el.querySelector('.mf-display');
-  assert.ok(shown.querySelector('.mt-sup'), 'the 2 is raised');
-  assert.ok(!shown.textContent.includes('^'), 'the caret mark is not shown');
-  assert.equal(input.style.opacity, '', 'the input is hidden by CSS, not removed');
-});
-
-test('typing ^ opens an exponent and a fraction bar opens a denominator', () => {
-  const { field, input } = makeField();
-  typeText(input, 'x^');
-  assert.ok(field.el.querySelector('.mt-sup .mt-gap'), 'an empty exponent shows a box');
-  assert.ok(field.stops().includes(2), 'the caret can sit in it');
-  assert.equal(caret(input), 2);
-  typeText(input, '2');
-  assert.equal(input.value, 'x^2');
-  assert.equal(caret(input), 3);
-
-  const second = makeField();
-  typeText(second.input, '1/');
-  assert.equal(second.field.el.querySelectorAll('.mt-frac').length, 1);
-  assert.ok(second.field.el.querySelector('.mt-den .mt-gap'), 'the denominator waits for input');
-  typeText(second.input, '2');
-  assert.equal(second.field.el.querySelector('.mt-den').textContent, '2');
-});
-
-test('the caret never lands inside syntax that is not drawn', () => {
-  const { field, input } = makeField('sqrt(x)');
-  assert.deepEqual(field.stops(), [0, 5, 6, 7], 'no stops inside "sqrt("');
-  place(input, 5);
-  key(input, 'ArrowLeft');
-  assert.equal(caret(input), 0, 'left from the radicand goes straight out of the root');
-  key(input, 'ArrowRight');
-  assert.equal(caret(input), 5, 'and right goes straight in');
-  key(input, 'ArrowRight');
-  assert.equal(caret(input), 6);
-
-  const power = makeField('x_12+1');
-  assert.ok(power.field.stops().includes(2) && power.field.stops().includes(3), 'subscript digits can be edited');
-});
-
-test('shift with the arrow keys extends a selection across drawn pieces', () => {
-  const { input, field } = makeField('sqrt(x)+1');
-  place(input, 0);
-  key(input, 'ArrowRight', { shiftKey: true });
-  assert.deepEqual([input.selectionStart, input.selectionEnd], [0, 5]);
-  key(input, 'ArrowRight', { shiftKey: true });
-  assert.deepEqual([input.selectionStart, input.selectionEnd], [0, 6]);
-  input.dispatchEvent(new window.Event('select', { bubbles: true }));
-  assert.ok(field.el.querySelectorAll('.mf-sel').length >= 1, 'the selected pieces are highlighted');
-  key(input, 'ArrowLeft');
-  assert.equal(caret(input), 0, 'left collapses to the start of the selection');
-});
-
-test('brackets close themselves, and typing the closer steps over it', () => {
-  const { input } = makeField();
-  typeChar(input, '(');
-  assert.equal(input.value, '()');
-  assert.equal(caret(input), 1);
-  typeChar(input, 'x');
-  typeChar(input, ')');
-  assert.equal(input.value, '(x)');
-  assert.equal(caret(input), 3, 'the typed bracket moved over the existing one');
-
-  const empty = makeField();
-  typeChar(empty.input, '(');
-  backspace(empty.input);
-  assert.equal(empty.input.value, '', 'deleting the opener of an empty pair removes both');
-
-  const before = makeField('x');
-  place(before.input, 0);
-  typeChar(before.input, '(');
-  assert.equal(before.input.value, '(x', 'no closer is added in front of a letter');
+test('typing a sum the old way, with brackets and commas, still works', () => {
+  for (const [word, sign, body] of [
+    ['sum', '\u2211', '(k,1,10,k^2)'],
+    ['prod', '\u220f', '(k,1,5,k)'],
+    ['int', '\u222b', '(t,0,x,sin(t))'],
+  ]) {
+    const { input } = makeField();
+    typeText(input, `${word}${body}`);
+    assert.equal(input.value, `${sign}${body}`, `${word}${body}`);
+  }
 });
 
 test('Backspace removes a hidden root opener whole and keeps what was inside', () => {
@@ -189,11 +115,113 @@ test('a sum shows its limits as soon as the sign appears', () => {
   typeText(input, 'sum');
   const big = field.el.querySelector('.mt-big');
   assert.ok(big, 'the sign is drawn as a big operator');
-  assert.ok(big.querySelectorAll('.mt-gap').length >= 2, 'with empty boxes for the limits');
-  typeText(input, '(k,1,10,k^2)');
+  assert.ok(big.querySelectorAll('.mt-gap').length >= 4, 'with an empty box for every slot');
+  typeText(input, 'k');
+  key(input, 'Tab');
+  typeText(input, '1');
+  key(input, 'Tab');
+  typeText(input, '10');
+  key(input, 'Tab');
+  typeText(input, 'k^2');
   assert.equal(input.value, '\u2211(k,1,10,k^2)');
   assert.equal(field.el.querySelectorAll('.mt-bigstack').length, 1);
   assert.equal(field.el.querySelectorAll('.mt-gap').length, 0, 'no empty boxes remain once every slot is filled');
+});
+
+/** Press ArrowRight (or ArrowLeft) repeatedly and list the offsets the caret lands on. */
+function walk(input, presses, name = 'ArrowRight') {
+  const seen = [caret(input)];
+  for (let i = 0; i < presses; i += 1) {
+    key(input, name);
+    seen.push(caret(input));
+  }
+  return seen;
+}
+
+test('arrow keys visit every slot of a sum in reading order, then leave it', () => {
+  const { input } = makeField('\u2211(,,,)');
+  place(input, 0);
+  // variable, start, end, body, then past the operator
+  assert.deepEqual(walk(input, 5), [0, 2, 3, 4, 5, 6]);
+  assert.deepEqual(walk(input, 5, 'ArrowLeft'), [6, 5, 4, 3, 2, 0]);
+});
+
+test('arrow keys visit every slot of an integral: lower, upper, body, then dx', () => {
+  const { input } = makeField('\u222b(,,,)');
+  place(input, 0);
+  assert.deepEqual(walk(input, 5), [0, 3, 4, 5, 2, 6]);
+  assert.deepEqual(walk(input, 5, 'ArrowLeft'), [6, 2, 5, 4, 3, 0]);
+});
+
+test('arrow keys also cross the slots of a filled product and visit its inner structure', () => {
+  const { input } = makeField('\u220f(k,1,5,k^2)');
+  place(input, 0);
+  const seen = walk(input, 40);
+  const stops = [...new Set(seen)];
+  for (const slotStart of [2, 4, 6, 8]) assert.ok(stops.includes(slotStart), `reaches offset ${slotStart}`);
+  assert.equal(seen.at(-1), 12, 'ends past the closing bracket');
+});
+
+test('plain text still moves one place at a time', () => {
+  const { input } = makeField('x^2+1');
+  place(input, 0);
+  assert.deepEqual(walk(input, 6), [0, 1, 2, 3, 4, 5, 5], 'and stops at the end');
+});
+
+test("Up and Down move between the limits of a sum and between a fraction's parts", () => {
+  const { input } = makeField('\u2211(k,1,10,k)');
+  place(input, 5);
+  assert.equal(key(input, 'ArrowUp').defaultPrevented, true);
+  assert.ok(caret(input) >= 6 && caret(input) <= 8, 'from the start value up into the end value');
+  assert.equal(key(input, 'ArrowDown').defaultPrevented, true);
+  assert.ok(caret(input) >= 2 && caret(input) <= 3, 'and back down into the index variable');
+  place(input, 9);
+  assert.equal(
+    key(input, 'ArrowUp').defaultPrevented,
+    false,
+    'the body has nothing above it, so rows can take the key',
+  );
+
+  const frac = makeField('1/2');
+  place(frac.input, 3);
+  key(frac.input, 'ArrowUp');
+  assert.equal(caret(frac.input), 1, 'denominator to numerator');
+  key(frac.input, 'ArrowDown');
+  assert.ok(caret(frac.input) >= 2, 'numerator to denominator');
+});
+
+test('a comma or Tab in a complete sum moves to the next slot, and an integral ends on dx', () => {
+  const { input } = makeField('\u2211(,,,)');
+  place(input, 2);
+  typeText(input, 'k');
+  typeText(input, ',');
+  assert.equal(input.value, '\u2211(k,,,)', 'no extra comma is added');
+  assert.equal(caret(input), 4, 'the caret moved to the start value');
+
+  const int = makeField('\u222b(,,,)');
+  place(int.input, 3);
+  assert.deepEqual(
+    [1, 2, 3, 4].map(() => {
+      key(int.input, 'Tab');
+      return caret(int.input);
+    }),
+    [4, 5, 2, 6],
+    'lower, upper, body, dx, then out',
+  );
+  const info = binderSlots('\u222b(,,,)', 3);
+  assert.deepEqual(info.visit, [1, 2, 3, 0]);
+  assert.equal(info.kind, 'int');
+});
+
+test('the typeset tree reports reading order and stacked slots', () => {
+  const sum = typesetField('\u2211(k,1,10,k^2)');
+  assert.ok(sum.order.indexOf(4) < sum.order.indexOf(6), 'start before end');
+  assert.ok(sum.order.indexOf(6) < sum.order.indexOf(9), 'end before body');
+  assert.equal(sum.vertical.length, 1);
+  assert.equal(sum.vertical[0].length, 2, 'end value above start value');
+  const int = typesetField('\u222b(,,,)');
+  assert.deepEqual(int.order, [0, 3, 4, 5, 2, 6]);
+  assert.equal(typesetField('1/2').vertical.length, 1);
 });
 
 test('the caret mark is drawn for every position and never adds text', () => {

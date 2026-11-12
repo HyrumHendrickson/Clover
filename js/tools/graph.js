@@ -1,11 +1,22 @@
 import { debounce, downloadBlob, h, onResize, slugify, uid } from '../core/dom.js';
 import { icon } from '../core/icons.js';
 import { createMathField } from '../core/mathfield.js';
+import { buildFolderRow, buildTableRow, commitRows, createRowMenu } from '../core/structrows.js';
 import { pointsOfInterest } from '../lib/graph/analysis.js';
 import { ROW_COLORS, renderGraph, rowColor } from '../lib/graph/draw.js';
 import { nearestOnPaths } from '../lib/graph/hit.js';
 import { GraphModel, sliderStep, sliderText } from '../lib/graph/model.js';
 import { formatNumber } from '../lib/graph/values.js';
+import {
+  cleanField,
+  cleanText,
+  drawableItems,
+  emptyTable,
+  isCollapsed,
+  moveRow,
+  nextTableNames,
+  normalizeRowList,
+} from '../lib/graph/rows.js';
 import { GraphView, normalizeGraphView } from '../lib/graph/view.js';
 import { evaluateNumber } from '../lib/expr.js';
 import { attachPanZoom } from '../lib/interact.js';
@@ -13,8 +24,6 @@ import { View, drawGrid, fitCanvas, themeColors } from '../lib/viewport.js';
 
 const MAX_ROWS = 60;
 const MAX_TEXT = 500;
-const MAX_FIELD = 40;
-const ID_PATTERN = /^[A-Za-z0-9_-]{1,24}$/;
 const DEFAULT_VIEW = { cx: 0, cy: 0, xspan: 20, yspan: 0 };
 const SLIDER_SECONDS = 8;
 const HIT_RADIUS = 10;
@@ -26,6 +35,9 @@ const SYNTAX = [
   ['Sliders', 'a = 1, then use a in other rows'],
   ['Restrictions', 'y = x {0 < x < 5}    y = {x < 0: -x, x}'],
   ['Lists and points', '[1...10]    (L, L^2)    total(L)'],
+  ['Tables', 'Add table; headings like x_1 and y_1 name the columns, x_1^2 computes one'],
+  ['Regression', 'y_1 ~ a x_1 + b    y_1 ~ a x_1^2 + b x_1 + c'],
+  ['Statistics', 'mean(L)    quartile(L, 1)    corr(L, M)    normaldist(0, 1).cdf(1.96)'],
   ['Lists of curves', 'f(x) = [1, 2, 3]x draws three lines'],
   ['Calculus', "f'(x)    d/dx x^3    sum(k, 1, 10, k^2)    int(t, 0, x, sin(t))"],
   ['Greek letters', 'Type theta, pi, alpha, beta, ...'],
@@ -33,7 +45,7 @@ const SYNTAX = [
 
 /* ------------------------------------------------------------------- state */
 
-const emptyRow = (id, color) => ({
+const emptyRow = (id, color, folder = '') => ({
   id,
   kind: 'expr',
   text: '',
@@ -44,40 +56,12 @@ const emptyRow = (id, color) => ({
   step: '',
   tmin: '',
   tmax: '',
+  folder,
+  style: {},
 });
 
-const cleanText = (value) => (typeof value === 'string' ? value.replace(/[\r\n]+/g, ' ').slice(0, MAX_TEXT) : '');
-const cleanField = (value) => (typeof value === 'string' && value.length <= MAX_FIELD ? value : '');
-
 function normalizeRows(raw) {
-  const entries = (Array.isArray(raw) ? raw : []).filter((r) => r && typeof r === 'object').slice(0, MAX_ROWS);
-  const taken = new Set();
-  const ids = entries.map((r) => {
-    if (typeof r.id === 'string' && ID_PATTERN.test(r.id) && !taken.has(r.id)) {
-      taken.add(r.id);
-      return r.id;
-    }
-    return null;
-  });
-  let n = 0;
-  const freshId = () => {
-    do n += 1;
-    while (taken.has(`r${n}`));
-    taken.add(`r${n}`);
-    return `r${n}`;
-  };
-  const rows = entries.map((r, i) => ({
-    id: ids[i] ?? freshId(),
-    kind: r.kind === 'note' ? 'note' : 'expr',
-    text: cleanText(r.text),
-    color: Number.isInteger(r.color) && r.color >= 0 && r.color < ROW_COLORS.length ? r.color : i % ROW_COLORS.length,
-    hidden: r.hidden === true,
-    min: cleanField(r.min),
-    max: cleanField(r.max),
-    step: cleanField(r.step),
-    tmin: cleanField(r.tmin),
-    tmax: cleanField(r.tmax),
-  }));
+  const rows = normalizeRowList(raw, { max: MAX_ROWS });
   if (rows.length === 0) rows.push(emptyRow('r1', 0));
   return rows;
 }
@@ -146,6 +130,7 @@ export default {
     let animFrame = 0;
     let animLast = 0;
     let geometry = new Map();
+    let lastItems = [];
     let geometryKey = '';
     let renderErrors = new Map();
     let selectedId = null;
@@ -184,12 +169,15 @@ export default {
         sized = true;
       }
       const dark = isDark();
-      const items = [];
-      for (const row of state.rows) {
-        const plot = model.info(row.id)?.plot;
-        if (row.kind === 'note' || row.hidden || !plot) continue;
-        items.push({ id: row.id, plot, color: rowColor(row.color, dark), selected: row.id === selectedId });
-      }
+      const items = drawableItems(state.rows, (id) => model.info(id)).map((item) => ({
+        id: item.id,
+        rowId: item.rowId,
+        plot: item.plot,
+        color: rowColor(item.colorIndex, dark),
+        selected: item.rowId === selectedId,
+        style: item.style,
+      }));
+      lastItems = items;
       const result = renderGraph(g, view, items, {
         colors: themeColors(),
         grid: state.grid,
@@ -289,18 +277,19 @@ export default {
     function pick(px, py) {
       if (geometryKey !== viewKey()) return null;
       let best = null;
-      for (const row of [...state.rows].reverse()) {
-        const geo = geometry.get(row.id);
-        if (!geo || row.hidden) continue;
+      for (const item of [...lastItems].reverse()) {
+        const geo = geometry.get(item.id);
+        if (!geo) continue;
         let hit = null;
         if (geo.paths) hit = nearestOnPaths(geo.paths, px, py, HIT_RADIUS);
-        else if (geo.dots) {
+        if (!hit && geo.dots) {
           for (const d of geo.dots) {
             const dist = Math.hypot(d.sx - px, d.sy - py);
             if (dist <= HIT_RADIUS && (!hit || dist < hit.dist)) hit = { x: d.sx, y: d.sy, dist };
           }
         }
-        if (hit && (!best || hit.dist < best.hit.dist)) best = { row, hit };
+        const row = rowById(item.rowId);
+        if (hit && row && (!best || hit.dist < best.hit.dist)) best = { row, hit, color: item.color };
       }
       return best;
     }
@@ -320,7 +309,6 @@ export default {
       cancelAnimationFrame(hoverFrame);
       hoverFrame = requestAnimationFrame(() => {
         updateCursor(px, py);
-        const dark = isDark();
         const k = pickPoi(px, py);
         if (k >= 0) {
           const [sx, sy] = view.toScreen(poi[k].x, poi[k].y);
@@ -329,7 +317,7 @@ export default {
           const hit = pick(px, py);
           if (hit) {
             const [x, y] = view.toWorld(hit.hit.x, hit.hit.y);
-            hover = { sx: hit.hit.x, sy: hit.hit.y, color: rowColor(hit.row.color, dark), text: labelOf({ x, y }) };
+            hover = { sx: hit.hit.x, sy: hit.hit.y, color: hit.color, text: labelOf({ x, y }) };
           } else {
             hover = null;
           }
@@ -372,10 +360,10 @@ export default {
       poi = [];
       pinned = null;
       const selected = selectedId && model.info(selectedId)?.plot;
-      if (selected && selected.type === 'explicit' && !rowById(selectedId).hidden) {
-        const others = state.rows
-          .filter((r) => r.id !== selectedId && !r.hidden && r.kind !== 'note')
-          .map((r) => model.info(r.id)?.plot)
+      if (selected && selected.type === 'explicit' && lastItems.some((item) => item.rowId === selectedId)) {
+        const others = lastItems
+          .filter((item) => item.rowId !== selectedId)
+          .map((item) => item.plot)
           .filter((plot) => plot && plot.type === 'explicit' && !plot.mask)
           .flatMap((plot) => {
             const count = plot.lanes ? Math.min(plot.lanes.count(), 8) : 1;
@@ -433,7 +421,9 @@ export default {
         ctx.notify(`A graph can have up to ${MAX_ROWS} rows. Delete one to add another.`);
         return null;
       }
-      const row = { ...emptyRow(uid('r'), nextColor()), ...init };
+      const after = afterId === null ? null : rowById(afterId);
+      const inherited = after ? (after.kind === 'folder' ? after.id : (after.folder ?? '')) : '';
+      const row = { ...emptyRow(uid('r'), nextColor(), init.kind === 'folder' ? '' : inherited), ...init };
       const at = afterId === null ? state.rows.length : state.rows.findIndex((r) => r.id === afterId) + 1;
       state.rows.splice(at, 0, row);
       rebuildList();
@@ -443,12 +433,30 @@ export default {
       return row;
     }
 
+    /** Append a table with two columns, named so they do not clash with another table's. */
+    function addTable() {
+      if (state.rows.length >= MAX_ROWS) {
+        ctx.notify(`A graph can have up to ${MAX_ROWS} rows. Delete one to add another.`);
+        return;
+      }
+      const table = emptyTable(uid('r'), nextColor(), nextTableNames(state.rows));
+      state.rows.push(table);
+      rebuildList();
+      recompileNow();
+      ctx.save();
+      focusRow(table.id);
+    }
+
+    function addFolder() {
+      addRow(null, { kind: 'folder', text: '', collapsed: false, hidden: false });
+    }
+
     function removeRow(id) {
       const index = state.rows.findIndex((r) => r.id === id);
       if (index < 0) return;
       playing.delete(id);
       if (state.rows.length === 1) {
-        Object.assign(state.rows[0], emptyRow(state.rows[0].id, state.rows[0].color));
+        state.rows.splice(0, 1, emptyRow(state.rows[0].id, state.rows[0].color));
         rebuildList();
         recompileNow();
         ctx.save();
@@ -479,23 +487,50 @@ export default {
       ctx.save();
     }
 
+    /** The closest row above or below that is showing, since a collapsed folder hides its rows. */
+    function neighbour(index, step) {
+      for (let i = index + step; i >= 0 && i < state.rows.length; i += step) {
+        if (!isCollapsed(state.rows, state.rows[i])) return state.rows[i];
+      }
+      return null;
+    }
+
     function onKey(event, row) {
       const index = state.rows.findIndex((r) => r.id === row.id);
+      if (event.altKey && (event.key === 'ArrowUp' || event.key === 'ArrowDown')) {
+        event.preventDefault();
+        const next = moveRow(state.rows, row.id, event.key === 'ArrowUp' ? -1 : 1);
+        if (next !== state.rows) {
+          commitRows(env, next);
+          focusRow(row.id);
+        }
+        return;
+      }
       if (event.key === 'Enter') {
         event.preventDefault();
         recompileLater.flush();
         addRow(row.id);
-      } else if (event.key === 'ArrowDown' && state.rows[index + 1]) {
+      } else if (event.key === 'ArrowDown' && neighbour(index, 1)) {
         event.preventDefault();
-        focusRow(state.rows[index + 1].id);
-      } else if (event.key === 'ArrowUp' && index > 0) {
+        focusRow(neighbour(index, 1).id);
+      } else if (event.key === 'ArrowUp' && neighbour(index, -1)) {
         event.preventDefault();
-        focusRow(state.rows[index - 1].id);
+        focusRow(neighbour(index, -1).id);
       } else if (event.key === 'Backspace' && row.text === '' && state.rows.length > 1) {
         event.preventDefault();
         removeRow(row.id);
       }
     }
+
+    const env = {
+      rows: state.rows,
+      ctx,
+      rebuild: () => rebuildList(),
+      onChange: () => recompileNow(),
+      onVisual: () => scheduleRender(),
+      removeRow: (id) => removeRow(id),
+      plot: true,
+    };
 
     function buildRow(row, index) {
       const refs = {};
@@ -677,7 +712,13 @@ export default {
         { class: 'gr-row', dataset: { id: row.id, kind: note ? 'note' : 'empty' } },
         note ? h('span', { class: 'gr-dot gr-dot-note', 'aria-hidden': 'true' }, 'N') : refs.dot,
         h('div', { class: 'gr-body' }, refs.field.el, refs.slider, refs.domain, refs.value, refs.error, refs.add),
-        h('div', { class: 'gr-actions' }, note ? null : refs.color, refs.remove),
+        h(
+          'div',
+          { class: 'gr-actions' },
+          note ? null : refs.color,
+          createRowMenu(row, env, { styled: !note }),
+          refs.remove,
+        ),
       );
       return refs;
     }
@@ -686,9 +727,14 @@ export default {
       rowEls.clear();
       list.replaceChildren();
       state.rows.forEach((row, index) => {
-        const refs = buildRow(row, index);
+        let refs;
+        if (row.kind === 'folder') refs = { ...buildFolderRow(row, index, env), struct: true };
+        else if (row.kind === 'table') refs = { ...buildTableRow(row, index, env), struct: true };
+        else refs = buildRow(row, index);
         rowEls.set(row.id, refs);
         refs.li.classList.toggle('is-selected', row.id === selectedId);
+        refs.li.classList.toggle('in-folder', row.kind !== 'folder' && Boolean(row.folder));
+        refs.li.hidden = isCollapsed(state.rows, row);
         list.append(refs.li);
       });
       syncValues();
@@ -699,6 +745,10 @@ export default {
       const row = rowById(id);
       if (!refs || !row) return;
       const info = model.info(id);
+      if (refs.struct) {
+        refs.sync?.(info);
+        return;
+      }
       const dark = isDark();
       const color = rowColor(row.color, dark);
       refs.li.dataset.kind = info?.kind ?? 'empty';
@@ -1049,6 +1099,8 @@ export default {
           { class: 'btn btn-quiet', type: 'button', onclick: () => addRow(null, { kind: 'note' }) },
           'Add note',
         ),
+        h('button', { class: 'btn btn-quiet', type: 'button', onclick: addTable }, 'Add table'),
+        h('button', { class: 'btn btn-quiet', type: 'button', onclick: addFolder }, 'Add folder'),
       ),
       h(
         'details',

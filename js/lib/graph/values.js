@@ -337,6 +337,51 @@ function sumSquares(nums) {
 }
 
 /** Sample standard deviation (divides by n - 1). */
+export function variance(list) {
+  const nums = numbersOnly('var', list);
+  return nums.length < 2 ? NaN : sumSquares(nums) / (nums.length - 1);
+}
+
+export function variancep(list) {
+  const nums = numbersOnly('varp', list);
+  return nums.length === 0 ? NaN : sumSquares(nums) / nums.length;
+}
+
+/** The p-th quantile (0 to 1) by linear interpolation between sorted values. */
+export function quantileOf(list, p, name = 'quantile') {
+  const nums = numbersOnly(name, list);
+  if (typeof p !== 'number') throw new GraphEvalError(`${name}() needs a single number for its second argument.`);
+  if (nums.length === 0 || !(p >= 0 && p <= 1)) return NaN;
+  const sorted = [...nums].sort((a, b) => a - b);
+  const pos = (sorted.length - 1) * p;
+  const lo = Math.floor(pos);
+  const hi = Math.ceil(pos);
+  return sorted[lo] + (sorted[hi] - sorted[lo]) * (pos - lo);
+}
+
+export function meanAbsDev(list) {
+  const nums = numbersOnly('mad', list);
+  if (nums.length === 0) return NaN;
+  const m = nums.reduce((a, b) => a + b, 0) / nums.length;
+  return nums.reduce((a, v) => a + Math.abs(v - m), 0) / nums.length;
+}
+
+/** A two-list statistic such as cov or corr; the lists must be the same length. */
+export function pairStat(name, fn) {
+  return {
+    min: 2,
+    max: 2,
+    any: ([a, b]) => {
+      const xs = numbersOnly(name, a);
+      const ys = numbersOnly(name, b);
+      if (xs.length !== ys.length) {
+        throw new GraphEvalError(`${name}() needs lists of the same length (${xs.length} and ${ys.length}).`);
+      }
+      return fn(xs, ys);
+    },
+  };
+}
+
 export function stdev(list) {
   const nums = numbersOnly('stdev', list);
   return nums.length < 2 ? NaN : Math.sqrt(sumSquares(nums) / (nums.length - 1));

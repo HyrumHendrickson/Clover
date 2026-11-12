@@ -7,7 +7,7 @@ Files use the `.clover` extension and are UTF-8 JSON. Importers accept `.clover`
 ```json
 {
   "format": "clover",
-  "version": 3,
+  "version": 4,
   "kind": "workspace",
   "exportedAt": "2026-01-01T12:00:00.000Z",
   "workspace": {
@@ -22,7 +22,7 @@ Files use the `.clover` extension and are UTF-8 JSON. Importers accept `.clover`
 ```json
 {
   "format": "clover",
-  "version": 3,
+  "version": 4,
   "kind": "tab",
   "exportedAt": "2026-01-01T12:00:00.000Z",
   "tab": { "type": "vector", "title": "Saddle", "state": { "p": "x", "q": "-y" } }
@@ -41,12 +41,24 @@ Files use the `.clover` extension and are UTF-8 JSON. Importers accept `.clover`
 | `graph3d`  | `rows`, `camera`, `bounds`, `grid`, `numbers`, `wire`, `angle`         |
 | `notebook` | `cells` (`text`, `math`, `graph`, or `embed`), `angle`                 |
 | `geometry` | `rows` (`id`, `text`), `snap`, `view`                                  |
+| `stats`    | `cols`, `mode`, `describe`, `regress`, `dist`, `tests`                 |
 
 `view` is `{ cx, cy, radius }`: the centre and half the shorter canvas side in world units. The `graph` tool uses `{ cx, cy, xspan, yspan }` instead, because its axes scale independently: the units across the width and height, with a `yspan` of 0 meaning "square".
 
 ### Graph rows
 
-Each entry of `rows` is `{ id, kind, text, color, hidden, min, max, step, tmin, tmax }`. `kind` is `expr` or `note`; `text` is at most 500 characters; `color` indexes the six-colour palette; `min`, `max`, and `step` set a slider's range; `tmin` and `tmax` set the parameter range of a parametric or polar row. There are at most 60 rows. A slider's current value lives in its row's text (`a = 1.5`). The syntax is described in [graphing.md](graphing.md).
+Each entry of `rows` has an `id`, a `kind`, and an optional `folder` (the `id` of a `folder` row in the same list; folders do not nest, and a folder's rows follow it).
+
+- `expr` and `note`: `{ id, kind, text, color, hidden, min, max, step, tmin, tmax, folder, style }`. `text` is at most 500 characters; `color` indexes the six-colour palette; `min`, `max`, and `step` set a slider's range; `tmin` and `tmax` set the parameter range of a parametric or polar row. A slider's current value lives in its row's text (`a = 1.5`). A regression is an `expr` row whose text contains `~`.
+- `folder`: `{ id, kind: "folder", text, collapsed, hidden }`. `text` is the title (at most 80 characters). Hiding a folder hides everything in it.
+- `table`: `{ id, kind: "table", folder, hidden, style, cols }`. Each column is `{ head, cells, color, hidden, points, lines }`. A `head` that is one variable name (`x_1`) names a list built from the typed `cells`; any other `head` is an expression computed from the other columns. Every column has the same number of `cells`, each at most 40 characters, in at most 8 columns and 500 rows. Only rows where every typed column has a value are used. The 3D graph and the notebook ignore plotting flags.
+- `style` holds only what differs from the defaults: `line` (`solid`, `dashed`, `dotted`), `width` (0.5 to 20), `opacity` (0 to 1), `point` (`point`, `open`, `cross`, `square`, `plus`, `triangle`, `diamond`, `star`), `size` (2 to 40), and `fill` (0 to 1). The 3D graph keeps style but does not draw with it yet.
+
+There are at most 60 rows. The syntax is described in [graphing.md](graphing.md). The notebook drops `folder` and `table` rows from its graph cells.
+
+### Stats
+
+`cols` holds 2 to 4 columns of `{ name, cells }` (up to 500 cells of 24 characters each; cells are text and may be any expression that evaluates to a number). `mode` is `describe`, `regress`, `dist`, or `tests`. The other four objects keep each mode's choices (column picks, chart, model, distribution and its parameters, test and its inputs). Every value is validated on load.
 
 ### Matrix lines
 
@@ -62,11 +74,12 @@ Each row is `{ id, text }`, one line of the geometry language: a comment (`#`), 
 
 ## Versions
 
-| Version | Change                                                                                                                 |
-| ------- | ---------------------------------------------------------------------------------------------------------------------- |
-| 1       | First release. The `desmos` tool saved `product` and `graphId` for an embedded calculator.                             |
-| 2       | `graph` replaces `desmos`. Version 1 `desmos` tabs are migrated to an empty graph, with a note holding the saved link. |
-| 3       | `matrix` holds named lines (older state is converted). `embed` notebook cells and the `geometry` tool are added.       |
+| Version | Change                                                                                                                                |
+| ------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| 1       | First release. The `desmos` tool saved `product` and `graphId` for an embedded calculator.                                            |
+| 2       | `graph` replaces `desmos`. Version 1 `desmos` tabs are migrated to an empty graph, with a note holding the saved link.                |
+| 3       | `matrix` holds named lines (older state is converted). `embed` notebook cells and the `geometry` tool are added.                      |
+| 4       | Graph rows gain `folder` and `style`, and `folder` and `table` rows are added. The `stats` tool is added. Older files open unchanged. |
 
 ## Import rules
 

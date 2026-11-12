@@ -6,10 +6,10 @@
  * closures, so the app never needs eval or Function.
  *
  * Node types: num, id, neg, bin, call, deriv, ddx, point, list, range, index,
- * listcomp, piece, abs, fact, deg, dot, cmp. A `point` has `z` set when it was
+ * listcomp, piece, abs, fact, deg, dot, cmp, distcall. A `point` has `z` set when it was
  * written with three coordinates; only the 3D graph accepts those.
  */
-import { RESERVED_WORDS, isFunctionName, BINDERS } from './names.js';
+import { RESERVED_WORDS, isFunctionName, BINDERS, DIST_METHODS, DIST_NAMES } from './names.js';
 
 export class GraphSyntaxError extends Error {
   constructor(message, position = null) {
@@ -316,7 +316,29 @@ class Parser {
       ) {
         this.next();
         node = { type: 'dot', target: node, field: this.next().value };
+      } else if (
+        this.isOp('.') &&
+        this.peek(1).type === 'id' &&
+        DIST_METHODS.has(this.peek(1).value) &&
+        node.type === 'call' &&
+        Object.hasOwn(DIST_NAMES, node.name)
+      ) {
+        this.next();
+        const method = this.next().value;
+        const args = this.args();
+        node = { type: 'distcall', dist: node.name, params: node.args, method, args, auto: false };
       } else {
+        // A bare distribution, normaldist(0, 1), graphs its density: it means normaldist(0, 1).pdf(x).
+        if (node.type === 'call' && Object.hasOwn(DIST_NAMES, node.name)) {
+          return {
+            type: 'distcall',
+            dist: node.name,
+            params: node.args,
+            method: 'pdf',
+            args: [{ type: 'id', name: 'x' }],
+            auto: true,
+          };
+        }
         return node;
       }
     }

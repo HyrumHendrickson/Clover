@@ -15,7 +15,7 @@
  */
 
 export const FORMAT = 'clover';
-export const VERSION = 3;
+export const VERSION = 4;
 export const MAX_TABS = 24;
 export const MAX_IMPORT_BYTES = 8 * 1024 * 1024;
 export const MAX_TITLE = 60;

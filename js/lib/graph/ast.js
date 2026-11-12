@@ -57,6 +57,9 @@ function walk(node, bound, out) {
       if (!bound.has(node.variable)) out.ids.add(node.variable);
       walk(node.arg, bound, out);
       return;
+    case 'distcall':
+      for (const arg of [...node.params, ...node.args]) walk(arg, bound, out);
+      return;
     case 'point':
       walk(node.x, bound, out);
       walk(node.y, bound, out);
@@ -95,4 +98,14 @@ function walk(node, bound, out) {
     default:
       return;
   }
+}
+
+/** A copy of `node` with every plain use of the name `from` replaced by `replacement`. */
+export function substituteId(node, from, replacement) {
+  if (Array.isArray(node)) return node.map((item) => substituteId(item, from, replacement));
+  if (node === null || typeof node !== 'object') return node;
+  if (node.type === 'id' && node.name === from) return { ...replacement };
+  const out = {};
+  for (const [key, value] of Object.entries(node)) out[key] = substituteId(value, from, replacement);
+  return out;
 }

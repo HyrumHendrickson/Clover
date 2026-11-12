@@ -66,7 +66,38 @@ export const FUNCTION_NAMES = [
   'sum',
   'prod',
   'int',
+  'count',
+  'var',
+  'varp',
+  'quantile',
+  'quartile',
+  'mad',
+  'cov',
+  'covp',
+  'corr',
+  'spearman',
+  'normaldist',
+  'tdist',
+  'chisqdist',
+  'uniformdist',
+  'binomialdist',
+  'poissondist',
+  'geodist',
 ];
+
+/** Distribution constructors, and the key of the distribution each one builds in `lib/stats.js`. */
+export const DIST_NAMES = {
+  normaldist: 'normal',
+  tdist: 't',
+  chisqdist: 'chisq',
+  uniformdist: 'uniform',
+  binomialdist: 'binomial',
+  poissondist: 'poisson',
+  geodist: 'geometric',
+};
+
+/** Methods that follow a distribution, as in normaldist(0, 1).cdf(2). */
+export const DIST_METHODS = new Set(['pdf', 'cdf', 'inversecdf']);
 
 export const FUNCTIONS = new Set(FUNCTION_NAMES);
 
@@ -77,7 +108,9 @@ export const BINDERS = new Set(['sum', 'prod', 'int']);
 export const CONSTANT_VALUES = { pi: Math.PI, tau: Math.PI * 2, e: Math.E };
 
 /** Words that are never split into letters. */
-export const RESERVED_WORDS = [...FUNCTION_NAMES, 'pi', 'tau', 'theta', 'for'].sort((a, b) => b.length - a.length);
+export const RESERVED_WORDS = [...FUNCTION_NAMES, ...DIST_METHODS, 'pi', 'tau', 'theta', 'for'].sort(
+  (a, b) => b.length - a.length,
+);
 
 /** Names a row may not define as variables or functions. */
 export const NOT_DEFINABLE = new Set(['x', 'y', 'e', 'pi', 'tau', 'theta']);

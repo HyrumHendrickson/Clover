@@ -363,5 +363,5 @@ test('Desmos tabs from format version 1 become graphs and keep their link as a n
   const renamed = JSON.parse(file('abc'));
   renamed.tab.title = 'My graph';
   assert.equal(parseImport(JSON.stringify(renamed), TOOLS, () => 'id').tab.title, 'My graph');
-  assert.throws(() => parseImport(file('x').replace('"version":1', '"version":4'), TOOLS, () => 'id'), /newer version/);
+  assert.throws(() => parseImport(file('x').replace('"version":1', '"version":5'), TOOLS, () => 'id'), /newer version/);
 });

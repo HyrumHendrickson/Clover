@@ -30,6 +30,7 @@ const STROKE = {
   'tool-geometry': 'M12 4L3 19h18L12 4zM3 19l13.5-7.5',
   'tool-complex': 'M12 3a9 9 0 100 18 9 9 0 000-18zM12 8a4 4 0 100 8 4 4 0 000-8zM12 12h.01',
   'tool-vector': 'M4 7h7M8.5 4.5L11 7 8.5 9.5M4 17h7M8.5 14.5L11 17l-2.5 2.5M14 12h6M17.5 9.5L20 12l-2.5 2.5',
+  'tool-stats': 'M4 20h16M4 20V4M7.5 20v-6M12 20V8M16.5 20v-9',
   'tool-python': 'M8 8l-4 4 4 4M16 8l4 4-4 4M13.5 5.5l-3 13',
 };
 

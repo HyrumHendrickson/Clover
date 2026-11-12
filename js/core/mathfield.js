@@ -13,12 +13,25 @@
  * can sit; arrow keys move between those marks, so the caret never lands inside
  * syntax that is not drawn (the `sqrt(` of a root, say).
  */
-import { typeset, autoSymbols } from '../lib/graph/typeset.js';
+import { typesetField, autoSymbols } from '../lib/graph/typeset.js';
 import { h } from './dom.js';
 
 const PAIRS = { '(': ')', '[': ']', '{': '}' };
 const CLOSERS = new Set(Object.values(PAIRS));
 const BINDER_START = /(?:[\u2211\u220f\u222b]|\b(?:sum|prod|int))$/;
+const BINDER_KIND = [
+  [/(?:\u222b|\bint)$/, 'int'],
+  [/(?:\u220f|\bprod)$/, 'prod'],
+  [/(?:\u2211|\bsum)$/, 'sum'],
+];
+
+/**
+ * The order the four arguments `(variable, start, end, body)` of a sum or product, or
+ * `(variable, lower, upper, body)` of an integral, are visited in, as indexes into the
+ * arguments as written. An integral reads its limits and body first and ends on the
+ * variable of integration, because that is where `dx` is drawn.
+ */
+const VISIT_ORDER = { sum: [0, 1, 2, 3], prod: [0, 1, 2, 3], int: [1, 2, 3, 0] };
 
 /**
  * Where the arguments of the nearest enclosing sum, prod, or int call begin and end,
@@ -49,9 +62,25 @@ export function enclosingBinder(text, caret) {
         depth -= 1;
       } else if (ch === ',' && depth === 0) commas.push(i);
     }
-    return { open, commas, close };
+    const before = text.slice(0, open);
+    const kind = BINDER_KIND.find(([pattern]) => pattern.test(before))?.[1] ?? 'sum';
+    return { open, commas, close, kind };
   }
   return null;
+}
+
+/**
+ * The argument ranges of the sum, product, or integral around `caret`, and the order
+ * Tab visits them in. `args[i]` is `{ from, to }`, the offsets just inside its ends.
+ */
+export function binderSlots(text, caret) {
+  const binder = enclosingBinder(text, caret);
+  if (!binder) return null;
+  const starts = [binder.open + 1, ...binder.commas.map((c) => c + 1)];
+  const ends = [...binder.commas, binder.close ?? text.length];
+  const args = starts.map((from, i) => ({ from, to: ends[i] }));
+  const visit = args.length === 4 ? VISIT_ORDER[binder.kind] : args.map((_, i) => i);
+  return { ...binder, args, visit };
 }
 
 /** Offset of the ")" that closes a "(" just before `from`, or null while it is still open. */
@@ -101,6 +130,10 @@ export function createMathField({
   let anchors = new Map();
   /** @type {number[]} */
   let stops = [0];
+  /** Offsets in the order Left and Right visit them. */
+  let order = [0];
+  /** Groups of stacked slots, for Up and Down. */
+  let vertical = [];
   let focused = false;
   let content = null;
 
@@ -113,16 +146,23 @@ export function createMathField({
       content = null;
       display.replaceChildren(h('span', { class: 'mf-placeholder' }, placeholder), caret);
       stops = [0, text.length];
+      order = [...stops];
+      vertical = [];
     } else {
-      content = typeset(text, { anchors: true });
+      const typeset = typesetField(text);
+      content = typeset.el;
       for (const mark of content.querySelectorAll('[data-o]')) {
         const offset = Number(mark.dataset.o);
         if (!anchors.has(offset)) anchors.set(offset, mark);
       }
       stops = [...anchors.keys()].sort((a, b) => a - b);
+      order = typeset.order.filter((o) => anchors.has(o));
+      for (const o of stops) if (!order.includes(o)) order.push(o);
+      vertical = typeset.vertical;
       display.replaceChildren(content, caret);
     }
     if (!stops.includes(text.length)) stops.push(text.length);
+    if (!order.includes(text.length)) order.push(text.length);
     update();
   }
 
@@ -136,6 +176,36 @@ export function createMathField({
     );
   const previousStop = (offset) => [...stops].reverse().find((s) => s < offset) ?? 0;
   const nextStop = (offset) => stops.find((s) => s > offset) ?? input.value.length;
+
+  /** The next or previous place the caret goes with a plain Left or Right, in reading order. */
+  function step(offset, forward) {
+    const at = order.indexOf(offset);
+    if (at < 0) return forward ? nextStop(offset) : previousStop(offset);
+    return order[Math.min(order.length - 1, Math.max(0, at + (forward ? 1 : -1)))];
+  }
+
+  /**
+   * Up and Down between stacked slots: numerator and denominator, the limits of a sum or integral.
+   * Returns false when the caret is not in one, so the key can move between rows instead.
+   */
+  function moveVertical(delta) {
+    const at = input.selectionStart ?? 0;
+    const hits = [];
+    for (const group of vertical) {
+      group.forEach((row, ri) => {
+        row.forEach((slot, si) => {
+          if (slot.from <= at && at <= slot.to) hits.push({ group, ri, si, slot });
+        });
+      });
+    }
+    hits.sort((a, b) => a.slot.to - a.slot.from - (b.slot.to - b.slot.from));
+    const hit = hits.find((c) => c.ri + delta >= 0 && c.ri + delta < c.group.length);
+    if (!hit) return false;
+    const row = hit.group[hit.ri + delta];
+    const target = row[Math.min(hit.si, row.length - 1)];
+    select(Math.min(target.to, target.from + (at - hit.slot.from)));
+    return true;
+  }
 
   function select(start, end = start, direction = 'forward') {
     input.setSelectionRange?.(start, end, direction);
@@ -233,41 +303,80 @@ export function createMathField({
         const at = forward ? end : start;
         select(at);
       } else {
-        select(forward ? nextStop(end) : previousStop(start));
+        select(step(forward ? end : start, forward));
       }
       return true;
     }
 
-    if (key === 'Tab' && plain && !event.defaultPrevented) {
-      const binder = enclosingBinder(text, event.shiftKey ? start : end);
-      if (binder) {
-        if (!event.shiftKey) {
-          const next = binder.commas.find((c) => c >= end);
-          if (next !== undefined) {
-            event.preventDefault();
-            select(next + 1);
-            return true;
-          }
-          if (binder.close !== null && end <= binder.close) {
-            event.preventDefault();
-            select(binder.close + 1);
-            return true;
-          }
-        } else {
-          const before = [...binder.commas].reverse().find((c) => c < start);
-          if (before !== undefined) {
-            event.preventDefault();
-            select(before);
-            return true;
-          }
-          if (start > binder.open + 1) {
-            event.preventDefault();
-            select(binder.open + 1);
-            return true;
-          }
-        }
+    if ((key === 'ArrowUp' || key === 'ArrowDown') && plain && !event.shiftKey && start === end) {
+      if (moveVertical(key === 'ArrowDown' ? 1 : -1)) {
+        event.preventDefault();
+        return true;
       }
       return false;
+    }
+
+    if (key === 'Tab' && plain && !event.defaultPrevented) {
+      const info = binderSlots(text, event.shiftKey ? start : end);
+      if (!info) return false;
+      const at = event.shiftKey ? start : end;
+      const here = info.args.findIndex((a) => at >= a.from && at <= a.to);
+      if (here < 0) return false;
+      const k = info.visit.indexOf(here);
+      if (!event.shiftKey) {
+        const next = info.args[info.visit[k + 1]];
+        if (next) {
+          event.preventDefault();
+          select(next.from);
+          return true;
+        }
+        if (info.close !== null && end <= info.close) {
+          event.preventDefault();
+          select(info.close + 1);
+          return true;
+        }
+        return false;
+      }
+      const before = info.args[info.visit[k - 1]];
+      const first = info.args[info.visit[0]];
+      if (before) {
+        event.preventDefault();
+        select(before.to);
+        return true;
+      }
+      if (start > first.from) {
+        event.preventDefault();
+        select(first.from);
+        return true;
+      }
+      return false;
+    }
+
+    // A fresh sum, product, or integral already has its brackets and commas. Typing "(" the old way, as in
+    // sum(k, 1, 10, k^2), folds the empty template back into one pair of brackets to type the arguments into.
+    if (key === '(' && plain && start === end) {
+      const sign = ['\u2211', '\u220f'].includes(text[start - 2])
+        ? start - 2
+        : text[start - 3] === '\u222b'
+          ? start - 3
+          : -1;
+      if (sign >= 0 && text.slice(sign + 1, sign + 6) === '(,,,)') {
+        event.preventDefault();
+        remove(sign + 2, sign + 5);
+        return true;
+      }
+    }
+
+    // Once every slot of a sum, product, or integral exists, a comma moves on to the next one.
+    if (key === ',' && plain && start === end) {
+      const info = binderSlots(text, start);
+      if (info && info.args.length === 4 && info.close !== null) {
+        const here = info.args.findIndex((a) => start >= a.from && start <= a.to);
+        const next = info.args[info.visit[info.visit.indexOf(here) + 1]];
+        event.preventDefault();
+        select(next ? next.from : info.close + 1);
+        return true;
+      }
     }
 
     if (key === 'Backspace' && plain && text !== '') {
@@ -328,7 +437,7 @@ export function createMathField({
     // Typing a name turns it into its symbol; deleting never re-triggers it.
     if (event.inputType === undefined || !event.inputType.startsWith('delete')) {
       const at = input.selectionStart ?? input.value.length;
-      const next = autoSymbols(input.value, at);
+      const next = autoSymbols(input.value, at, { templates: true });
       if (next.text !== input.value) {
         input.value = next.text;
         input.setSelectionRange?.(next.caret, next.caret);
