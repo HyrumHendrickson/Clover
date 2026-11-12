@@ -6,6 +6,21 @@ All notable changes are documented here. The format follows [Keep a Changelog](h
 
 ### Added
 
+- LaTeX tab: create folders, and put new files and uploads into the selected folder.
+- 3D graphing: hover a surface to see the coordinates of the point under the pointer.
+- Graphing: expression rows are numbered.
+- Clicking the Clover logo returns to the home screen without closing tabs.
+
+### Changed
+
+- Notebook and Geometry tabs open empty instead of with example content.
+- The two-stars orbit example now animates while it runs.
+
+### Fixed
+
+- Linear algebra: the picture canvas covered the inputs, so nothing could be typed.
+- LaTeX: a failed engine download now says how to fix it.
+
 - A Cellular automata tab: grids that evolve by a rule written in Python, with any number of colours. Click cells to paint, then play, pause, step, or step back. Presets include Conway's Game of Life, a glider gun, a forest fire, Wireworld, Brian's Brain, and a cyclic rock-paper-scissors rule.
 - A Fractals tab: the Mandelbrot and Julia sets, the Burning Ship, the tricorn, and a Newton fractal, with pan, zoom, palettes, and a way to pick a Julia set from the Mandelbrot set.
 - A LaTeX tab: several files and pictures per project, source on the left and the compiled PDF on the right. TeX Live runs in WebAssembly (vendored Siglum engine) inside a sandboxed frame and downloads packages on demand.

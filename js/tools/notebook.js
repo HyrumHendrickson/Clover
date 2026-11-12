@@ -113,29 +113,11 @@ function freshRowId(taken) {
   return id;
 }
 
-const starter = () => [
-  {
-    type: 'text',
-    text: '# Untitled notebook\nNotes, calculations, and graphs share one set of definitions. Define a function in a math cell, then plot it in a graph cell. Write math inside text with dollar signs, like $x^2 + 1$.',
-  },
-  { type: 'math', row: { id: 'r1', text: 'f(x) = x^2 - 2', color: 0 } },
-  { type: 'math', row: { id: 'r2', text: 'f(3)', color: 1 } },
-  { type: 'graph', rows: [{ id: 'r3', text: 'y = f(x)', color: 1 }] },
-];
-
 function normalize(raw) {
   const taken = new Set();
   const counts = { n: 0, graph: 0, embed: 0, code: 0, rows: new Set() };
   const entries = Array.isArray(raw?.cells) ? raw.cells.slice(0, MAX_CELLS) : [];
   const cells = entries.map((c) => normalizeCell(c, taken, counts)).filter(Boolean);
-  if (cells.length === 0) {
-    taken.clear();
-    counts.rows.clear();
-    counts.graph = 0;
-    counts.embed = 0;
-    counts.code = 0;
-    for (const c of starter()) cells.push(normalizeCell(c, taken, counts));
-  }
   return { cells, angle: raw?.angle === 'deg' ? 'deg' : 'rad' };
 }
 
@@ -308,16 +290,11 @@ export default {
     function removeCell(id) {
       const index = indexOf(id);
       if (index < 0) return;
-      if (state.cells.length === 1) {
-        state.cells.splice(0, 1);
-        insertCell('math');
-        return;
-      }
       state.cells.splice(index, 1);
       rebuildCells();
       recompileNow();
       ctx.save();
-      instances.get(state.cells[Math.max(0, index - 1)].id)?.focus();
+      instances.get(state.cells[Math.max(0, index - 1)]?.id)?.focus();
     }
 
     function moveCell(id, delta) {

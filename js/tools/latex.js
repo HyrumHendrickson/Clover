@@ -5,16 +5,20 @@ import { openMenu } from '../core/menu.js';
 import {
   IMAGE_TYPES,
   MAX_FILES,
+  MAX_FOLDERS,
   MAX_IMAGE_BYTES,
   MAX_PATH,
   MAX_PROJECT_BYTES,
   MAX_TEXT,
+  allFolders,
   bytesToBase64,
   compileRequest,
   extensionOf,
   firstTexError,
+  folderOf,
   isImagePath,
   isTextPath,
+  isValidFolder,
   isValidPath,
   normalizeProject,
   projectBytes,
@@ -158,7 +162,10 @@ export default {
       if (result.ok && showPdf(result.pdf)) {
         setStatus('Compiled', 'done');
       } else {
-        const detail = firstTexError(result.log) || result.error || 'The document did not compile.';
+        const offline = /could not fetch|failed to fetch|networkerror|load failed/i.test(result.error ?? '');
+        const detail = offline
+          ? 'The TeX engine could not be downloaded. Check that this browser can reach packages.siglum.org, then compile again.'
+          : firstTexError(result.log) || result.error || 'The document did not compile.';
         setStatus(detail.slice(0, 200), 'error');
         logBox.open = true;
         if (result.error) appendLog(result.error);
@@ -198,6 +205,9 @@ export default {
     const imageHost = h('div', { class: 'ltx-image', hidden: true });
     let editor = null;
     let renaming = null;
+    let creatingFolder = false;
+    /** Folder that new files and uploads go into ('' is the top level). Not saved. */
+    let currentFolder = '';
 
     const mimeOf = (path) => IMAGE_TYPES[extensionOf(path)] ?? 'application/octet-stream';
 
@@ -225,9 +235,139 @@ export default {
       }
     }
 
+    const inFolder = (path) => (currentFolder ? `${currentFolder}/${path}` : path);
+
+    function folderChip(folder) {
+      const selected = folder === currentFolder;
+      const depth = folder.split('/').length - 1;
+      const more = h(
+        'button',
+        {
+          class: 'btn btn-quiet btn-icon ltx-more',
+          type: 'button',
+          'aria-label': `Options for folder ${folder}`,
+          'aria-haspopup': 'menu',
+          onclick: (event) => {
+            event.stopPropagation();
+            currentFolder = folder;
+            openMenu(
+              event.currentTarget,
+              [
+                { label: 'New .tex file here', icon: 'plus', onSelect: newFile },
+                { label: 'Upload files here\u2026', icon: 'upload', onSelect: () => fileInput.click() },
+                { label: 'New folder inside\u2026', onSelect: () => beginFolder() },
+                { separator: true },
+                { label: 'Delete folder', icon: 'trash', onSelect: () => removeFolder(folder) },
+              ],
+              { align: 'end' },
+            );
+          },
+        },
+        icon('settings', 14),
+      );
+      return h(
+        'li',
+        { class: `ltx-file ltx-folder${selected ? ' is-selected' : ''}`, style: { marginLeft: `${depth * 14}px` } },
+        h(
+          'button',
+          {
+            class: 'ltx-file-name',
+            type: 'button',
+            'aria-pressed': selected ? 'true' : 'false',
+            title: 'New files and uploads go into the selected folder',
+            onclick: () => {
+              currentFolder = selected ? '' : folder;
+              buildFiles();
+            },
+          },
+          `${folder.split('/').pop()}/`,
+        ),
+        more,
+      );
+    }
+
+    function beginFolder() {
+      creatingFolder = true;
+      buildFiles();
+    }
+
+    function commitFolder(value) {
+      creatingFolder = false;
+      const name = cleanName(value.trim()).replace(/\/+$/, '');
+      if (name) {
+        const path = inFolder(name);
+        if (!isValidFolder(path)) {
+          ctx.notify('Use letters, digits, dashes, and underscores for a folder name.', 'error');
+        } else if (allFolders(state).includes(path)) {
+          ctx.notify(`There is already a folder called ${path}.`, 'error');
+        } else if (allFolders(state).length >= MAX_FOLDERS) {
+          ctx.notify(`A project can have up to ${MAX_FOLDERS} folders.`, 'error');
+        } else {
+          state.folders.push(path);
+          currentFolder = path;
+          save();
+        }
+      }
+      buildFiles();
+    }
+
+    function removeFolder(folder) {
+      const inside = (path) => path.startsWith(`${folder}/`);
+      const doomed = state.files.filter((f) => inside(f.path));
+      const remainingTex = state.files.filter((f) => !inside(f.path) && extensionOf(f.path) === 'tex');
+      if (remainingTex.length === 0) {
+        ctx.notify('A project needs at least one .tex file outside the folder you delete.', 'info');
+        return;
+      }
+      state.files = state.files.filter((f) => !inside(f.path));
+      state.folders = state.folders.filter((f) => f !== folder && !inside(f));
+      if (currentFolder === folder || inside(currentFolder)) currentFolder = '';
+      if (!byPath(state.main)) state.main = remainingTex[0].path;
+      if (!byPath(state.active)) state.active = state.main;
+      save();
+      buildFiles();
+      showActive();
+      if (doomed.length)
+        ctx.notify(`Deleted ${folder} and ${doomed.length} file${doomed.length === 1 ? '' : 's'}.`, 'info');
+    }
+
     function buildFiles() {
+      const folders = allFolders(state);
+      const ordered = [
+        ...state.files.filter((f) => folderOf(f.path) === '').map((file) => ({ file })),
+        ...folders.flatMap((folder) => [
+          { folder },
+          ...state.files.filter((f) => folderOf(f.path) === folder).map((file) => ({ file })),
+        ]),
+      ];
+      const folderInput = creatingFolder
+        ? (() => {
+            const input = h('input', {
+              class: 'input input-mono ltx-rename',
+              type: 'text',
+              placeholder: currentFolder ? `Folder inside ${currentFolder}` : 'Folder name',
+              maxlength: String(MAX_PATH),
+              'aria-label': 'Name of the new folder',
+              onkeydown: (event) => {
+                if (event.key === 'Enter') commitFolder(input.value);
+                else if (event.key === 'Escape') {
+                  creatingFolder = false;
+                  buildFiles();
+                }
+              },
+              onblur: () => {
+                if (creatingFolder) commitFolder(input.value);
+              },
+            });
+            queueMicrotask(() => input.focus());
+            return h('li', { class: 'ltx-file' }, input);
+          })()
+        : null;
       fileList.replaceChildren(
-        ...state.files.map((file) => {
+        ...(folderInput ? [folderInput] : []),
+        ...ordered.map((entry) => {
+          if (!entry.file) return folderChip(entry.folder);
+          const file = entry.file;
           const selected = file.path === state.active;
           if (renaming === file.path) {
             const input = h('input', {
@@ -287,7 +427,7 @@ export default {
                 'aria-current': selected ? 'true' : 'false',
                 onclick: () => open(file.path),
               },
-              file.path,
+              file.path.split('/').pop(),
               file.path === state.main ? h('span', { class: 'ltx-main-tag' }, 'main') : null,
             ),
             more,
@@ -370,7 +510,7 @@ export default {
 
     function newFile() {
       const path = uniquePath(
-        'untitled.tex',
+        inFolder('untitled.tex'),
         state.files.map((f) => f.path),
       );
       if (
@@ -384,7 +524,7 @@ export default {
 
     async function upload(fileList_) {
       for (const file of [...fileList_]) {
-        const name = cleanName(file.name);
+        const name = inFolder(cleanName(file.name));
         if (!isValidPath(name)) {
           ctx.notify(
             `${file.name} is not a file type this tab can use. Add .tex, .bib, .sty, .cls, .png, .jpg, or .pdf files.`,
@@ -509,6 +649,7 @@ export default {
         onclick: (event) =>
           openMenu(event.currentTarget, [
             { label: 'New .tex file', icon: 'plus', onSelect: newFile },
+            { label: 'New folder\u2026', icon: 'plus', onSelect: () => beginFolder() },
             { label: 'Upload files or pictures\u2026', icon: 'upload', onSelect: () => fileInput.click() },
           ]),
       },

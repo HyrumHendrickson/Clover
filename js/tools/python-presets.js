@@ -465,6 +465,7 @@ M2 = 0.5            # mass of the orange star
 SEPARATION = 200.0  # starting distance between the stars
 SPEED = 0.8         # 1.0 is a circular orbit; below 1 gives an ellipse, above 1.41 escapes
 STEPS = 8000        # about two orbits
+FRAME = 16          # steps between redraws; lower is smoother but slower
 DT = 1.0
 SCALE = 1.6
 
@@ -491,17 +492,32 @@ def acceleration(ax, ay, bx, by, mass):
 
 trail1 = turtle.Turtle()
 trail2 = turtle.Turtle()
+star1 = turtle.Turtle()
+star2 = turtle.Turtle()
 for trail, colour in [(trail1, "#2563eb"), (trail2, "#d97706")]:
     trail.hideturtle()
     trail.speed(0)
     trail.pensize(1.5)
     trail.pencolor(colour)
     trail.penup()
+# Each star has its own turtle. It erases and redraws its dot every frame, so the star moves on screen.
+for star in (star1, star2):
+    star.hideturtle()
+    star.speed(0)
+    star.penup()
+
+def draw_star(star, x, y, colour, size):
+    star.clear()
+    star.goto(x * SCALE, y * SCALE)
+    star.dot(size, colour)
 
 trail1.goto(x1 * SCALE, y1 * SCALE)
 trail2.goto(x2 * SCALE, y2 * SCALE)
+draw_star(star1, x1, y1, "#2563eb", 16)
+draw_star(star2, x2, y2, "#d97706", 11)
 trail1.pendown()
 trail2.pendown()
+turtle.update()
 
 # Leapfrog: half kick, drift, half kick.
 a1x, a1y = acceleration(x1, y1, x2, y2, M2)
@@ -521,14 +537,12 @@ for step in range(STEPS):
     vy1 += a1y * DT / 2
     vx2 += a2x * DT / 2
     vy2 += a2y * DT / 2
-    if step % 4 == 0:
+    if step % FRAME == 0:
         trail1.goto(x1 * SCALE, y1 * SCALE)
         trail2.goto(x2 * SCALE, y2 * SCALE)
-
-for x, y, colour, size in [(x1, y1, "#2563eb", 16), (x2, y2, "#d97706", 11)]:
-    t.penup()
-    t.goto(x * SCALE, y * SCALE)
-    t.dot(size, colour)
+        draw_star(star1, x1, y1, "#2563eb", 16)
+        draw_star(star2, x2, y2, "#d97706", 11)
+        turtle.update()  # show this frame now, so the orbit plays out live
 
 energy = 0.5 * M1 * (vx1 * vx1 + vy1 * vy1) + 0.5 * M2 * (vx2 * vx2 + vy2 * vy2)
 energy -= G * M1 * M2 / math.sqrt((x1 - x2) ** 2 + (y1 - y2) ** 2 + 1.0)

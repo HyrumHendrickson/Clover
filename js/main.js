@@ -3,6 +3,7 @@ import { App } from './core/app.js';
 const byId = (id) => document.getElementById(id);
 
 const app = new App({
+  brand: byId('brand-button'),
   tabstrip: byId('tabstrip'),
   tablist: byId('tablist'),
   panels: byId('panels'),

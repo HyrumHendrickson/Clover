@@ -77,3 +77,19 @@
 .gr-compact .gr-row.is-current .gr-dot-none {
   background: var(--accent);
 }
+
+.g3-marker {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  margin: -6px 0 0 -6px;
+  border: 3px solid var(--accent);
+  border-radius: 50%;
+  background: var(--surface);
+  pointer-events: none;
+}
+
+.g3-marker[hidden],
+.g3-readout[hidden] {
+  display: none;
+}

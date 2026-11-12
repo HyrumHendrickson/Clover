@@ -218,6 +218,10 @@
   background: var(--surface);
 }
 
+.ltx-folder .ltx-file-name {
+  font-weight: 600;
+}
+
 .ltx-file.is-selected {
   border-color: var(--accent);
   background: var(--surface-2);

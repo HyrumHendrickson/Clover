@@ -899,3 +899,33 @@
     border-bottom: 1px solid var(--border);
   }
 }
+
+/* Expression rows are numbered in a gutter, as in Desmos. Notes and folders do not take a number. */
+.gr-list:not(.gr-compact) {
+  counter-reset: gr-row;
+}
+
+.gr-list:not(.gr-compact) > .gr-row {
+  position: relative;
+  counter-increment: gr-row;
+}
+
+.gr-list:not(.gr-compact) > .gr-row[data-kind='note'] {
+  counter-increment: none;
+}
+
+.gr-list:not(.gr-compact) > .gr-row::before {
+  content: counter(gr-row);
+  position: absolute;
+  top: 8px;
+  left: 1px;
+  width: 10px;
+  color: var(--text-muted);
+  font: 10px var(--font-mono);
+  text-align: right;
+  pointer-events: none;
+}
+
+.gr-list:not(.gr-compact) > .gr-row[data-kind='note']::before {
+  content: none;
+}

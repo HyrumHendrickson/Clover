@@ -65,6 +65,7 @@ export function installDom({ width = 960, height = 640 } = {}) {
 
   const byId = (id) => window.document.getElementById(id);
   const elements = {
+    brand: byId('brand-button'),
     tabstrip: byId('tabstrip'),
     tablist: byId('tablist'),
     panels: byId('panels'),

@@ -155,6 +155,8 @@ export default {
         '3D graph. Drag to orbit, shift-drag or right-drag to pan, scroll or pinch to zoom. Arrow keys orbit, shift with arrows pans, plus and minus zoom, 0 resets the view.',
     });
     const status = h('p', { class: 'g3-status', hidden: true, role: 'status' });
+    const readout = h('div', { class: 'plot-readout g3-readout', hidden: true, 'aria-hidden': 'true' });
+    const marker = h('span', { class: 'g3-marker', hidden: true, 'aria-hidden': 'true' });
 
     /* ------------------------------------------------------------ geometry */
 
@@ -293,9 +295,69 @@ export default {
         dragMode = 'pinch';
       }
     };
+    /* Hovering shows the point of a surface under the pointer, with its coordinates, like Desmos. */
+    let hoverFrame = 0;
+    function pickSurface(px, py) {
+      const box = new Box(state.bounds);
+      const a = [0, 0, 0];
+      const b = [0, 0, 0];
+      const c = [0, 0, 0];
+      let best = null;
+      for (const row of state.rows) {
+        const tris = geometry.get(row.id)?.tris;
+        if (!tris || isHidden(state.rows, row)) continue;
+        for (let i = 0; i + 8 < tris.length; i += 9) {
+          camera.project(tris[i], tris[i + 1], tris[i + 2], a);
+          camera.project(tris[i + 3], tris[i + 4], tris[i + 5], b);
+          camera.project(tris[i + 6], tris[i + 7], tris[i + 8], c);
+          const d = (b[1] - c[1]) * (a[0] - c[0]) + (c[0] - b[0]) * (a[1] - c[1]);
+          if (Math.abs(d) < 1e-9) continue;
+          const wa = ((b[1] - c[1]) * (px - c[0]) + (c[0] - b[0]) * (py - c[1])) / d;
+          const wb = ((c[1] - a[1]) * (px - c[0]) + (a[0] - c[0]) * (py - c[1])) / d;
+          const wc = 1 - wa - wb;
+          if (wa < 0 || wb < 0 || wc < 0) continue;
+          const depth = wa * a[2] + wb * b[2] + wc * c[2];
+          if (best && depth >= best.depth) continue;
+          best = {
+            depth,
+            row,
+            u: [0, 1, 2].map((k) => wa * tris[i + k] + wb * tris[i + 3 + k] + wc * tris[i + 6 + k]),
+          };
+        }
+      }
+      return best && { ...best, world: best.u.map((u, k) => box.world(k, u)) };
+    }
+    function clearHover() {
+      cancelAnimationFrame(hoverFrame);
+      marker.hidden = true;
+      readout.hidden = true;
+    }
+    function hoverAt(event) {
+      if (event.pointerType === 'touch' || pointers.size > 0) return;
+      const [x, y] = local(event);
+      cancelAnimationFrame(hoverFrame);
+      hoverFrame = requestAnimationFrame(() => {
+        const hit = pickSurface(x, y);
+        if (!hit) {
+          clearHover();
+          return;
+        }
+        const [px, py] = camera.project(hit.u[0], hit.u[1], hit.u[2], [0, 0, 0]);
+        marker.hidden = false;
+        marker.style.left = `${px}px`;
+        marker.style.top = `${py}px`;
+        marker.style.borderColor = rowColor(hit.row.color, isDark());
+        readout.hidden = false;
+        readout.textContent = `(${hit.world.map((v) => formatNumber(v, 4)).join(', ')})`;
+      });
+    }
     const onMove = (event) => {
       const previous = pointers.get(event.pointerId);
-      if (!previous) return;
+      if (!previous) {
+        hoverAt(event);
+        return;
+      }
+      clearHover();
       const [x, y] = local(event);
       pointers.set(event.pointerId, [x, y]);
       if (dragMode === 'orbit') {
@@ -347,6 +409,7 @@ export default {
     base.addEventListener('pointermove', onMove);
     base.addEventListener('pointerup', onUp);
     base.addEventListener('pointercancel', onUp);
+    base.addEventListener('pointerleave', clearHover);
     base.addEventListener('wheel', onWheel, { passive: false });
     base.addEventListener('keydown', onKeyDown);
     base.addEventListener('dblclick', resetView);
@@ -560,7 +623,7 @@ export default {
         ),
       ),
     );
-    const stage = h('div', { class: 'gr-stage plot-body g3-stage' }, base, status, tools, settings);
+    const stage = h('div', { class: 'gr-stage plot-body g3-stage' }, base, marker, readout, status, tools, settings);
 
     root.classList.add('tool', 'graph-tool', 'graph3d-tool');
     root.append(h('div', { class: 'graph-layout' }, panel, stage));

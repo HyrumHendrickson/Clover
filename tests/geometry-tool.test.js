@@ -19,7 +19,23 @@ after(() => {
 });
 
 const geometry = TOOLS.geometry;
-const tab = app.addTab({ type: 'geometry' });
+const MEDIANS = [
+  '# The medians of a triangle meet at one point.',
+  'A = (-4, -2)',
+  'B = (5, -2)',
+  'C = (1, 5)',
+  'a = segment(B, C)',
+  'b = segment(C, A)',
+  'c = segment(A, B)',
+  'D = midpoint(B, C)',
+  'E = midpoint(C, A)',
+  'F = midpoint(A, B)',
+  'm = segment(A, D)',
+  'n = segment(B, E)',
+  'p = segment(C, F)',
+  'concurrent(m, n, p)',
+];
+const tab = app.addTab({ type: 'geometry', state: { rows: MEDIANS.map((text) => ({ text })) } });
 const panel = () => document.getElementById(`panel-${tab.id}`);
 const q = (s, root = panel()) => root.querySelector(s);
 const qa = (s, root = panel()) => [...root.querySelectorAll(s)];
@@ -113,7 +129,11 @@ test('state normalises hostile input and ids stay unique', () => {
   assert.equal(new Set(state.rows.map((r) => r.id)).size, 3);
   assert.ok(state.rows.every((r) => r.text.length <= 300 && !r.text.includes('\n')));
   assert.deepEqual(geometry.normalize(state), state);
-  assert.ok(geometry.normalize({}).rows.length > 5, 'an empty figure gets the starter');
+  assert.deepEqual(
+    geometry.normalize({}).rows.map((r) => r.text),
+    [''],
+    'an empty figure is one blank row',
+  );
 });
 
 test('a figure survives export and import', () => {

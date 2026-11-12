@@ -16,23 +16,6 @@ const DEFAULT_VIEW = { cx: 0, cy: 0, xspan: 18, yspan: 0 };
 const GRAB = 14;
 const SLIDE_STEPS = 16;
 
-const STARTER = [
-  '# The medians of a triangle meet at one point.',
-  'A = (-4, -2)',
-  'B = (5, -2)',
-  'C = (1, 5)',
-  'a = segment(B, C)',
-  'b = segment(C, A)',
-  'c = segment(A, B)',
-  'D = midpoint(B, C)',
-  'E = midpoint(C, A)',
-  'F = midpoint(A, B)',
-  'm = segment(A, D)',
-  'n = segment(B, E)',
-  'p = segment(C, F)',
-  'concurrent(m, n, p)',
-];
-
 /* ------------------------------------------------------------------- state */
 
 function normalize(raw) {
@@ -54,13 +37,7 @@ function normalize(raw) {
     seen.add(id);
     rows.push({ id, text: entry.text.replace(/[\r\n]+/g, ' ').slice(0, MAX_TEXT) });
   }
-  if (rows.length === 0) {
-    for (const text of STARTER) {
-      const id = fresh();
-      seen.add(id);
-      rows.push({ id, text });
-    }
-  }
+  if (rows.length === 0) rows.push({ id: fresh(), text: '' });
   return {
     rows,
     snap: SNAPS.includes(raw?.snap) ? raw.snap : '1/2',

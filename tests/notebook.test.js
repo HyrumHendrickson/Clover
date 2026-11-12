@@ -40,7 +40,18 @@ after(() => {
 });
 
 const notebook = TOOLS.notebook;
-const tab = app.addTab({ type: 'notebook' });
+const STARTER = {
+  cells: [
+    {
+      type: 'text',
+      text: '# Untitled notebook\nNotes, calculations, and graphs share one set of definitions. Write math inside text with dollar signs, like $x^2 + 1$.',
+    },
+    { type: 'math', row: { id: 'r1', text: 'f(x) = x^2 - 2', color: 0 } },
+    { type: 'math', row: { id: 'r2', text: 'f(3)', color: 1 } },
+    { type: 'graph', rows: [{ id: 'r3', text: 'y = f(x)', color: 1 }] },
+  ],
+};
+const tab = app.addTab({ type: 'notebook', state: STARTER });
 const panel = () => document.getElementById(`panel-${tab.id}`);
 const q = (selector, root = panel()) => root.querySelector(selector);
 const qa = (selector, root = panel()) => [...root.querySelectorAll(selector)];
@@ -158,7 +169,7 @@ test('a note is edited as Markdown and shown rendered', () => {
   assert.equal(q('.nb-text-view .mt-sup').textContent, '2');
 });
 
-test('the last cell cannot be deleted away to nothing', async () => {
+test('the last cell can be deleted, leaving an empty notebook', async () => {
   while (tab.state.cells.length > 1) {
     qa('button', cells()[0])
       .find((b) => b.title === 'Delete cell')
@@ -167,8 +178,7 @@ test('the last cell cannot be deleted away to nothing', async () => {
   qa('button', cells()[0])
     .find((b) => b.title === 'Delete cell')
     .click();
-  assert.equal(tab.state.cells.length, 1);
-  assert.equal(tab.state.cells[0].type, 'math');
+  assert.equal(tab.state.cells.length, 0, 'deleting every cell leaves an empty notebook');
   await settle();
 });
 
@@ -199,7 +209,7 @@ test('state normalises hostile input, keeps ids unique across cells, and limits 
   const rowIds = state.cells.flatMap((c) => (c.row ? [c.row.id] : (c.rows ?? []).map((r) => r.id)));
   assert.equal(new Set(rowIds).size, rowIds.length, 'row ids are unique across the whole notebook');
   assert.deepEqual(notebook.normalize(state), state);
-  assert.equal(notebook.normalize({ cells: [] }).cells.length, 4, 'an empty notebook gets the starter cells');
+  assert.equal(notebook.normalize({ cells: [] }).cells.length, 0, 'an empty notebook stays empty');
 });
 
 test('a notebook survives export and import', () => {

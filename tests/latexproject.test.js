@@ -127,3 +127,19 @@ test('the first TeX error is reported with its line', () => {
   assert.equal(firstTexError(log), 'Undefined control sequence. (l.7 \\foo)');
   assert.equal(firstTexError('all fine'), '');
 });
+
+test('folders are validated, deduplicated, and include the parents of files', async () => {
+  const { allFolders, isValidFolder, normalizeProject: normalize } = await import('../js/lib/latexproject.js');
+  assert.ok(isValidFolder('figures') && isValidFolder('a/b'));
+  assert.ok(!isValidFolder('../x') && !isValidFolder('/x') && !isValidFolder('x/') && !isValidFolder(''));
+  const project = normalize({
+    files: [
+      { path: 'main.tex', text: 'x' },
+      { path: 'chapters/one/a.tex', text: 'y' },
+    ],
+    folders: ['figures', 'figures', '../bad', 7],
+  });
+  assert.deepEqual(project.folders, ['figures']);
+  assert.deepEqual(allFolders(project), ['chapters', 'chapters/one', 'figures']);
+  assert.deepEqual(normalize(project), project);
+});

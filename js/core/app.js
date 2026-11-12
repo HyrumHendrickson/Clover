@@ -55,6 +55,7 @@ export class App {
 
   bindShell() {
     const { newTab, exportButton, importButton, importInput, themeButton, helpButton, tablist } = this.el;
+    this.el.brand?.addEventListener('click', () => this.showLauncher());
     newTab.append(icon('plus', 16));
     newTab.addEventListener('click', () => openMenu(newTab, this.newTabItems()));
     exportButton.prepend(icon('download', 16));
@@ -189,12 +190,14 @@ export class App {
   }
 
   showLauncher() {
+    if (this.activeId) this.instances.get(this.activeId)?.onHide?.();
     this.activeId = null;
     for (const panel of this.panels.values()) panel.hidden = true;
     this.el.launcher.hidden = false;
     document.title = BRAND_TITLE;
     this.updateTabSelection();
     this.drawPreviews();
+    this.save();
   }
 
   newTabItems() {

@@ -25,6 +25,31 @@ export function isValidPath(path) {
   return path.split('/').every((part) => part !== '.' && part !== '..' && SEGMENT.test(part) && !part.endsWith(' '));
 }
 
+export const MAX_FOLDERS = 30;
+
+/** True for a folder path like `figures` or `chapters/one`: sensible segments, no `..`, no trailing slash. */
+export function isValidFolder(path) {
+  if (typeof path !== 'string' || path.length === 0 || path.length > MAX_PATH) return false;
+  return path.split('/').every((part) => part !== '.' && part !== '..' && SEGMENT.test(part) && !part.endsWith(' '));
+}
+
+/** The folder a file path sits in, or '' for the top level. */
+export const folderOf = (path) => (path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '');
+
+/** Every folder in use: the ones created explicitly plus the parents of files and of other folders, sorted. */
+export function allFolders(project) {
+  const set = new Set();
+  const add = (folder) => {
+    for (let at = folder.indexOf('/'); ; at = folder.indexOf('/', at + 1)) {
+      set.add(at < 0 ? folder : folder.slice(0, at));
+      if (at < 0) break;
+    }
+  };
+  for (const f of project.folders ?? []) add(f);
+  for (const f of project.files) if (folderOf(f.path)) add(folderOf(f.path));
+  return [...set].sort();
+}
+
 /** A path nobody else in `taken` uses, adding -2, -3, ... before the extension when needed. */
 export function uniquePath(path, taken) {
   const used = new Set(taken);
@@ -128,8 +153,13 @@ export function normalizeProject(raw) {
   const texFiles = files.filter((f) => extensionOf(f.path) === 'tex');
   const main = typeof r.main === 'string' && texFiles.some((f) => f.path === r.main) ? r.main : texFiles[0].path;
   const active = typeof r.active === 'string' && seen.has(r.active) ? r.active : main;
+  const folders = [];
+  for (const f of Array.isArray(r.folders) ? r.folders.slice(0, MAX_FOLDERS * 2) : []) {
+    if (folders.length < MAX_FOLDERS && isValidFolder(f) && !folders.includes(f)) folders.push(f);
+  }
   return {
     files,
+    folders,
     main,
     active,
     engine: ['pdflatex', 'xelatex'].includes(r.engine) ? r.engine : 'pdflatex',
