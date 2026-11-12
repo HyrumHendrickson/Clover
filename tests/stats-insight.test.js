@@ -93,7 +93,7 @@ const labelled = (label) => qa('input').find((i) => i.getAttribute('aria-label')
 const settle = () => tick(260);
 
 test('the summary leads with tiles and an interval, with the full table folded away', async () => {
-  click(byText('Load an example'));
+  click(byText('Example'));
   await settle();
   const tiles = qa('.st-tile-label').map((n) => n.textContent);
   assert.deepEqual(tiles, ['Count', 'Mean', 'Median', 'Standard deviation']);

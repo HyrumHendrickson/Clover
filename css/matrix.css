@@ -4,9 +4,11 @@
   align-items: center;
 }
 
+/* The sheet takes about a third of the width, enough for a 4 by 4 matrix, and the picture takes the rest.
+   Nothing is capped, so there is no empty band between them on a wide screen. */
 .mx-body {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(300px, 440px);
+  grid-template-columns: minmax(340px, min(38%, 540px)) minmax(0, 1fr);
   gap: 16px;
   overflow: hidden;
 }
@@ -15,7 +17,7 @@
   min-width: 0;
   min-height: 0;
   padding: 2px 4px 16px 2px;
-  overflow-y: auto;
+  overflow: auto;
 }
 
 /* ------------------------------------------------------------------ picture */
@@ -31,6 +33,10 @@
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   background: var(--surface);
+}
+
+.mx-viz > :not(.mx-viz-stage) {
+  flex: none;
 }
 
 .mx-viz-head {
@@ -58,7 +64,7 @@
 .mx-viz-stage {
   position: relative;
   flex: 1;
-  min-height: 260px;
+  min-height: 300px;
   border-color: var(--border);
   border-radius: var(--radius);
 }
@@ -144,7 +150,7 @@
   display: flex;
   flex-direction: column;
   gap: 10px;
-  width: min(780px, 100%);
+  width: 100%;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -152,6 +158,7 @@
 
 .mx-line {
   position: relative;
+  overflow-x: auto;
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   background: var(--surface);
@@ -265,7 +272,7 @@
 }
 
 .mx-cell {
-  width: 78px;
+  width: clamp(58px, 6vw, 84px);
   min-height: 36px;
   border-color: transparent;
   background: var(--surface-2);
@@ -379,7 +386,7 @@
 /* --------------------------------------------------------------------- help */
 
 .mx-help {
-  width: min(780px, 100%);
+  width: 100%;
   margin-top: 16px;
   font-size: 13.5px;
 }

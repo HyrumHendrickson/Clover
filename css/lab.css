@@ -366,23 +366,65 @@
 
 /* ------------------------------------------------------------ symbolic algebra */
 
-.mx2-body {
+.maxima-tool {
+  padding: 0;
+  overflow: hidden;
+}
+
+.mx2-layout {
+  display: grid;
+  flex: 1;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 320px);
+  min-height: 0;
+}
+
+.mx2-main {
   display: flex;
+  min-width: 0;
+  min-height: 0;
   flex-direction: column;
 }
 
-.mx2-transcript {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  padding-right: 4px;
+.mx2-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--border);
 }
 
+.mx2-title {
+  margin: 0;
+  font: 600 20px/1.25 var(--font-display);
+}
+
+.mx2-sub {
+  margin: 2px 0 0;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.mx2-scroll {
+  flex: 1;
+  min-height: 0;
+  padding: 16px 20px;
+  overflow-y: auto;
+}
+
+.mx2-transcript {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+/* Each command is a card: the input on a tinted band, then its results in large type. */
 .mx2-entry {
-  margin-bottom: 10px;
-  padding: 8px 12px;
+  overflow: hidden;
   border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border-radius: var(--radius-lg);
   background: var(--surface);
 }
 
@@ -390,21 +432,35 @@
 .mx2-line {
   display: flex;
   align-items: baseline;
-  gap: 10px;
-  padding: 2px 0;
+  gap: 12px;
+  padding: 8px 14px;
+}
+
+.mx2-in {
+  align-items: center;
+  border-left: 3px solid var(--accent);
+  background: var(--surface-2);
+}
+
+.mx2-line {
+  padding-block: 10px;
+}
+
+.mx2-line + .mx2-line {
+  border-top: 1px dashed var(--border);
 }
 
 .mx2-label {
   flex: none;
-  min-width: 56px;
+  min-width: 52px;
   color: var(--text-muted);
-  font: 12.5px var(--font-mono);
+  font: 12px var(--font-mono);
 }
 
 .mx2-code {
   flex: 1;
   min-width: 0;
-  font: 13px var(--font-mono);
+  font: 14px/1.5 var(--font-mono);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
@@ -412,18 +468,223 @@
 .mx2-math {
   min-width: 0;
   overflow-x: auto;
-  font-size: 17px;
+  font-size: 21px;
+}
+
+.mx2-entry .mx-error {
+  margin: 0;
+  padding: 10px 14px 10px 17px;
+  border-left: 3px solid var(--danger);
 }
 
 .mx2-again {
-  margin-top: 4px;
+  margin: 0 8px 8px;
 }
 
-.mx2-compose {
+.mx2-remove {
   flex: none;
+  width: 28px;
+  min-height: 28px;
+  opacity: 0.55;
+}
+
+.mx2-entry:hover .mx2-remove,
+.mx2-remove:focus-visible {
+  opacity: 1;
+}
+
+/* The empty state offers a few commands to start from. */
+.mx2-empty {
+  max-width: 900px;
+  margin: 8vh auto 0;
+  text-align: center;
+}
+
+.mx2-empty[hidden] {
+  display: none;
+}
+
+.mx2-empty-title {
+  margin: 0;
+  font: 600 26px/1.25 var(--font-display);
+}
+
+.mx2-empty-text {
+  max-width: 46ch;
+  margin: 8px auto 20px;
+  color: var(--text-muted);
+  line-height: 1.55;
+}
+
+.mx2-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 10px;
+  text-align: left;
+}
+
+.mx2-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+  text-align: left;
+}
+
+.mx2-card:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.mx2-card-name {
+  font-weight: 600;
+}
+
+.mx2-card-code {
+  color: var(--text-muted);
+  font: 12.5px var(--font-mono);
+  overflow-wrap: anywhere;
+}
+
+/* The input is pinned under the session, with the quick examples and the key hints beneath it. */
+.mx2-compose {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 20px 14px;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.mx2-prompt {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  max-width: 900px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+.mx2-caret {
+  align-self: flex-start;
+  padding-top: 5px;
+  color: var(--accent);
+  font: 600 22px/1 var(--font-mono);
 }
 
 .mx2-input {
+  flex: 1;
+  min-width: 0;
+  max-height: 160px;
+  resize: none;
+}
+
+.mx2-run {
+  flex: none;
+}
+
+.mx2-chips,
+.mx2-keys {
+  max-width: 900px;
   width: 100%;
-  resize: vertical;
+  margin: 0 auto;
+}
+
+.mx2-keys {
+  color: var(--text-muted);
+  font-size: 12.5px;
+}
+
+/* ---------------------------------------------------------------- reference */
+
+.mx2-side {
+  min-height: 0;
+  padding: 14px 14px 18px;
+  overflow-y: auto;
+  border-left: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.mx2-side-title {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.mx2-side-hint,
+.mx2-side-note {
+  margin: 4px 0 10px;
+  color: var(--text-muted);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.mx2-ref {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.mx2-ref-item {
+  display: flex;
+  width: 100%;
+  flex-direction: column;
+  gap: 2px;
+  padding: 7px 8px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  text-align: left;
+}
+
+.mx2-ref-item:hover {
+  border-color: var(--border);
+  background: var(--surface-2);
+}
+
+.mx2-ref-syntax {
+  font: 600 12.5px var(--font-mono);
+  overflow-wrap: anywhere;
+}
+
+.mx2-ref-about {
+  color: var(--text-muted);
+  font-size: 12.5px;
+  line-height: 1.4;
+}
+
+.mx2-side-note {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+@media (max-width: 960px) {
+  .maxima-tool {
+    overflow: auto;
+  }
+
+  .mx2-layout {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(480px, 1fr) auto;
+  }
+
+  .mx2-side {
+    border-top: 1px solid var(--border);
+    border-left: 0;
+  }
 }

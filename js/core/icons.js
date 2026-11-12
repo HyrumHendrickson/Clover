@@ -22,6 +22,7 @@ const STROKE = {
   'arrow-up': 'M12 19V5m0 0l-6 6m6-6l6 6',
   'arrow-down': 'M12 5v14m0 0l-6-6m6 6l6-6',
   home: 'M4 11l8-7 8 7M6 10v10h12V10M10 20v-5h4v5',
+  sidebar: 'M4 5h16v14H4zM9.5 5v14',
   square: 'M5 5h14v14H5zM9 9h6v6H9z',
   'tool-graph': 'M3 20h18M3 20V4M5.5 15.5c3 0 3-9 6.5-9s3.5 9 6.5 9',
   'tool-graph3d': 'M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3zM4 7.5l8 4.5 8-4.5M12 12v9',

@@ -6,6 +6,9 @@ All notable changes are documented here. The format follows [Keep a Changelog](h
 
 ### Added
 
+- Statistics: data goes into a spreadsheet-style grid with named columns, row numbers, and arrow-key movement, and the sheet grows as you type. **Upload CSV** loads a file (comma, tab, or semicolon separated; a text-only first row is used as the column names), **Download** saves the data as CSV, and **Edit as text** shows and edits the same data as CSV text. Pasting cells from a spreadsheet or CSV text fills the grid from the cell you paste into. Up to 8 columns and 500 rows.
+- Graphing (2D and 3D): a button to hide and show the expression list.
+- Symbolic algebra: a command reference beside the session (select an entry to put its example in the input), starting points when the session is empty, and a Run button.
 - A Programming tab that runs Python, Rust, C, C++, and Java, with standard input and a highlighted editor. Code runs on a Judge0 service; see docs/programming.md.
 - Embedding: `?embed=1` shows Clover without page chrome, `&tool=<type>` shows one tool, `&tools=a,b` offers a subset, and `embed.js` adds a `<clover-embed>` element. The Export menu has an "Embed on a website" dialog. See docs/embedding.md.
 - Linear algebra: an Examples menu, and a legend and one-line summary under the picture.
@@ -17,6 +20,10 @@ All notable changes are documented here. The format follows [Keep a Changelog](h
 
 ### Changed
 
+- Graphing (2D and 3D) is restyled after Desmos: a white canvas with grey gridlines, a grey gutter beside the numbered expression rows, a coloured bar on the row being edited, an add bar that stays at the top of the list, and a vertical stack of view buttons (settings, zoom, reset, save) over the graph. The 3D preset menu moved to the lower left of the graph.
+- Statistics: the layout is a data sheet on the left and the analysis on the right, with the chart and the numbers side by side when there is room, and underlined mode tabs.
+- Linear algebra: the sheet and the picture now share the full width. The 780-pixel cap on the sheet left an empty band between them on wide screens.
+- Symbolic algebra: each command is a card with its result in large type, the input is pinned under the session and grows with what you type, and the page uses the full height.
 - Linear algebra: the page is restyled, and the picture of `A*x` shows only the two vectors until "Show grid and details" is ticked.
 - Statistics: the mode tabs and options moved above the results.
 - The file format is version 6 (adds the `programming` tool). Older files open unchanged.

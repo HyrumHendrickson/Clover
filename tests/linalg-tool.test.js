@@ -108,3 +108,17 @@ test('editing an entry redraws the selected line', async () => {
   await tick(200);
   assert.match(q('.mx-legend').textContent, /x = \(5, 0\)/);
 });
+
+test('the sheet and the picture share the width, with no fixed cap that leaves a gap between them', async () => {
+  const { readFileSync } = await import('node:fs');
+  const css = readFileSync(new URL('../css/matrix.css', import.meta.url), 'utf8');
+  const rule = (selector) => css.match(new RegExp(`(^|\\n)${selector.replace('.', '\\.')} \\{([^}]*)\\}`))?.[2] ?? '';
+  assert.match(rule('.mx-lines'), /width:\s*100%/);
+  assert.match(rule('.mx-help'), /width:\s*100%/);
+  assert.doesNotMatch(css, /min\(780px/);
+  assert.match(
+    rule('.mx-body'),
+    /grid-template-columns:[^;]*minmax\(0,\s*1fr\)/,
+    'the picture column takes what is left',
+  );
+});

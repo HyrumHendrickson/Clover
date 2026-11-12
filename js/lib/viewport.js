@@ -97,8 +97,8 @@ export function formatTick(value, step) {
 }
 
 /** Read the current theme's canvas colours from CSS custom properties. */
-export function themeColors() {
-  const style = getComputedStyle(document.documentElement);
+export function themeColors(element = document.documentElement) {
+  const style = getComputedStyle(element);
   const read = (name, fallback) => style.getPropertyValue(name).trim() || fallback;
   return {
     bg: read('--canvas-bg', '#ffffff'),

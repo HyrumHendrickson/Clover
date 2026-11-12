@@ -1,8 +1,9 @@
-import { debounce, h, onResize } from '../core/dom.js';
+import { debounce, downloadBlob, h, onResize, slugify } from '../core/dom.js';
+import { icon } from '../core/icons.js';
+import { hasHeaderRow, parseCsv, toCsv } from '../lib/csv.js';
 import { evaluateNumber } from '../lib/expr.js';
 import { MODELS, fitModel } from '../lib/fit.js';
 import { formatNumber } from '../lib/graph/values.js';
-import { parsePastedTable } from '../lib/graph/rows.js';
 import {
   DISTRIBUTIONS,
   chiSqGof,
@@ -33,7 +34,9 @@ import {
 import { conclusion, hypotheses, testDistribution } from '../lib/statsreport.js';
 import { fitCanvas, themeColors } from '../lib/viewport.js';
 
-const MAX_COLUMNS = 4;
+const MAX_COLUMNS = 8;
+const MIN_ROWS = 12;
+const MAX_FILE_BYTES = 1_000_000;
 const MAX_ROWS = 500;
 const MAX_CELL = 24;
 const MAX_NAME = 20;
@@ -335,138 +338,351 @@ export default {
 
     /* -------------------------------------------------------------- data */
 
-    /** A pasted block replaces the columns it covers, since it is a whole data set, not an edit. */
-    function fillColumns(start, grid) {
+    let textMode = false;
+    let cellEls = [];
+    let gridBody = null;
+    const isNumeric = (cell) => Number.isFinite(number(cell));
+    const defaultName = (i) => `Column ${i + 1}`;
+
+    /** Rows to show: everything with data, plus one empty row to type into. */
+    function visibleRows() {
+      let last = 0;
+      for (const col of state.cols) {
+        for (let i = col.cells.length - 1; i >= last; i -= 1) {
+          if (col.cells[i].trim() !== '') {
+            last = i + 1;
+            break;
+          }
+        }
+      }
+      return Math.min(MAX_ROWS, Math.max(MIN_ROWS, last + 1));
+    }
+
+    function setCell(c, r, value) {
+      const col = state.cols[c];
+      while (col.cells.length <= r) col.cells.push('');
+      col.cells[r] = text(value, MAX_CELL);
+    }
+
+    /** Re-read the selectors that depend on how many columns there are and what they are called. */
+    function afterShapeChange() {
+      Object.assign(state, normalize(state));
+      save();
+      buildControls();
+      refresh();
+    }
+
+    /** Put a block of cells into the grid with its top-left corner at (row, column). */
+    function placeGrid(row, column, grid) {
       const width = grid[0].length;
-      while (state.cols.length < Math.min(MAX_COLUMNS, start + width)) {
-        state.cols.push({ name: `Column ${state.cols.length + 1}`, cells: [] });
+      while (state.cols.length < Math.min(MAX_COLUMNS, column + width)) {
+        state.cols.push({ name: defaultName(state.cols.length), cells: [] });
       }
-      for (let c = 0; c < width; c += 1) {
-        const col = state.cols[start + c];
-        if (col) col.cells = grid.slice(0, MAX_ROWS).map((line) => line[c] ?? '');
+      for (let r = 0; r < grid.length && row + r < MAX_ROWS; r += 1) {
+        for (let c = 0; c < width && column + c < state.cols.length; c += 1) setCell(column + c, row + r, grid[r][c]);
       }
-      if (grid.length > MAX_ROWS) ctx.notify(`Only the first ${MAX_ROWS} rows were pasted.`);
+      if (row + grid.length > MAX_ROWS) ctx.notify(`Only the first ${MAX_ROWS} rows were kept.`);
+      if (column + width > MAX_COLUMNS) ctx.notify(`Only the first ${MAX_COLUMNS} columns were kept.`);
+    }
+
+    /** Replace every column with the contents of a table. `header` says whether its first row is names. */
+    function replaceWith(grid, header) {
+      const body = header ? grid.slice(1) : grid;
+      const width = Math.min(MAX_COLUMNS, grid[0]?.length ?? 0);
+      state.cols = Array.from({ length: width }, (_, c) => ({
+        name: text(header ? grid[0][c] : '', MAX_NAME) || defaultName(c),
+        cells: body.slice(0, MAX_ROWS).map((line) => text(line[c] ?? '', MAX_CELL)),
+      }));
+      Object.assign(state, normalize(state));
+      state.describe.col = 0;
+      state.regress.x = 0;
+      state.regress.y = Math.min(1, state.cols.length - 1);
+      state.tests.col = 0;
+      state.tests.col2 = Math.min(1, state.cols.length - 1);
+      return {
+        rows: Math.min(body.length, MAX_ROWS),
+        columns: width,
+        cut: grid[0]?.length > MAX_COLUMNS || body.length > MAX_ROWS,
+      };
+    }
+
+    function loadCsvText(source, label) {
+      const grid = parseCsv(source);
+      if (grid.length === 0) {
+        ctx.notify('That file has no rows. Check that it holds comma-separated values.', 'error');
+        return;
+      }
+      const result = replaceWith(grid, hasHeaderRow(grid, isNumeric));
+      save();
+      buildData();
+      afterShapeChange();
+      const parts = `${result.rows} ${result.rows === 1 ? 'row' : 'rows'} and ${result.columns} ${result.columns === 1 ? 'column' : 'columns'}`;
+      ctx.notify(
+        `Loaded ${parts} from ${label}.${result.cut ? ` Anything past ${MAX_ROWS} rows or ${MAX_COLUMNS} columns was left out.` : ''}`,
+      );
+    }
+
+    async function readFile(file) {
+      if (!file) return;
+      if (file.size > MAX_FILE_BYTES) {
+        ctx.notify('That file is over 1 MB. Statistics holds up to 500 rows and 8 columns, so trim it first.', 'error');
+        return;
+      }
+      let source;
+      try {
+        source = await file.text();
+      } catch {
+        ctx.notify('Could not read that file. Try saving it as CSV again.', 'error');
+        return;
+      }
+      loadCsvText(source, file.name);
+    }
+
+    const fileInput = h('input', {
+      class: 'st-file',
+      type: 'file',
+      accept: '.csv,.tsv,.txt,text/csv,text/plain,text/tab-separated-values',
+      hidden: true,
+      'aria-label': 'Upload a CSV file',
+      onchange: () => {
+        readFile(fileInput.files?.[0]);
+        fileInput.value = '';
+      },
+    });
+
+    function downloadCsv() {
+      const blob = new Blob([toCsv(state.cols)], { type: 'text/csv' });
+      downloadBlob(`${slugify(ctx.title(), 'data')}.csv`, blob);
+    }
+
+    function focusCell(r, c) {
+      const el = cellEls[r]?.[c];
+      if (el) {
+        el.focus();
+        el.select?.();
+      }
+    }
+
+    function buildCell(c, r) {
+      const col = state.cols[c];
+      const input = h('input', {
+        class: 'st-cell',
+        type: 'text',
+        spellcheck: 'false',
+        autocomplete: 'off',
+        inputmode: 'decimal',
+        maxlength: String(MAX_CELL),
+        'aria-label': `${col.name}, row ${r + 1}`,
+        value: col.cells[r] ?? '',
+        oninput: () => {
+          setCell(c, r, input.value);
+          if (r === cellEls.length - 1 && input.value !== '' && cellEls.length < MAX_ROWS) appendRow();
+          save();
+          refreshSoon();
+        },
+        onkeydown: (event) => {
+          const atStart = input.selectionStart === 0 && input.selectionEnd === 0;
+          const atEnd = input.selectionStart === input.value.length && input.selectionEnd === input.value.length;
+          if (event.key === 'Enter' || event.key === 'ArrowDown') {
+            event.preventDefault();
+            focusCell(r + 1, c);
+          } else if (event.key === 'ArrowUp') {
+            event.preventDefault();
+            focusCell(r - 1, c);
+          } else if (event.key === 'ArrowRight' && atEnd) {
+            event.preventDefault();
+            focusCell(r, c + 1);
+          } else if (event.key === 'ArrowLeft' && atStart) {
+            event.preventDefault();
+            focusCell(r, c - 1);
+          }
+        },
+        onpaste: (event) => {
+          const pasted = event.clipboardData?.getData('text') ?? '';
+          if (!/[\t\r\n]/.test(pasted.trim())) return;
+          const grid = parseCsv(pasted);
+          if (grid.length === 0 || (grid.length === 1 && grid[0].length === 1)) return;
+          event.preventDefault();
+          const named = r === 0 && c === 0 && hasHeaderRow(grid, isNumeric);
+          if (named) {
+            for (let i = 0; i < Math.min(grid[0].length, MAX_COLUMNS); i += 1) {
+              while (state.cols.length <= i) state.cols.push({ name: defaultName(state.cols.length), cells: [] });
+              state.cols[i].name = text(grid[0][i], MAX_NAME) || defaultName(i);
+            }
+          }
+          placeGrid(r, c, named ? grid.slice(1) : grid);
+          save();
+          buildData();
+          afterShapeChange();
+        },
+      });
+      return input;
+    }
+
+    function buildRow(r) {
+      const cells = state.cols.map((_, c) => buildCell(c, r));
+      cellEls[r] = cells;
+      return h(
+        'tr',
+        {},
+        h('th', { class: 'st-rownum', scope: 'row' }, String(r + 1)),
+        cells.map((input) => h('td', {}, input)),
+      );
+    }
+
+    function appendRow() {
+      gridBody.append(buildRow(cellEls.length));
+    }
+
+    function buildGrid() {
+      cellEls = [];
+      const head = state.cols.map((col, i) => {
+        const name = h('input', {
+          class: 'st-name',
+          type: 'text',
+          maxlength: String(MAX_NAME),
+          'aria-label': `Name of column ${i + 1}`,
+          value: col.name,
+          oninput: () => {
+            col.name = text(name.value, MAX_NAME);
+            save();
+          },
+          onchange: () => {
+            col.name = col.name.trim() || defaultName(i);
+            name.value = col.name;
+            save();
+            buildControls();
+            for (let r = 0; r < cellEls.length; r += 1) {
+              cellEls[r][i]?.setAttribute('aria-label', `${col.name}, row ${r + 1}`);
+            }
+            refresh();
+          },
+        });
+        const remove = h(
+          'button',
+          {
+            class: 'btn btn-quiet btn-icon st-remove',
+            type: 'button',
+            'aria-label': `Remove column ${i + 1}`,
+            title: 'Remove column',
+            disabled: state.cols.length <= 2,
+            onclick: () => {
+              state.cols.splice(i, 1);
+              buildData();
+              afterShapeChange();
+            },
+          },
+          icon('close', 12),
+        );
+        return h('th', { scope: 'col' }, h('div', { class: 'st-colhead' }, name, remove));
+      });
+      gridBody = h('tbody', {});
+      const total = visibleRows();
+      for (let r = 0; r < total; r += 1) gridBody.append(buildRow(r));
+      return h(
+        'div',
+        { class: 'st-sheet' },
+        h(
+          'table',
+          { class: 'st-grid' },
+          h('thead', {}, h('tr', {}, h('th', { class: 'st-corner', scope: 'col' }, ''), head)),
+          gridBody,
+        ),
+      );
+    }
+
+    function buildText() {
+      const area = h('textarea', {
+        class: 'input st-csv',
+        spellcheck: 'false',
+        wrap: 'off',
+        'aria-label': 'Data as CSV text. The first line holds the column names.',
+        placeholder: 'x,y\n1,2\n2,4\n3,6',
+        value: toCsv(state.cols),
+        oninput: () => {
+          const grid = parseCsv(area.value);
+          if (grid.length === 0) {
+            state.cols = normalizeColumns([]);
+          } else {
+            replaceWith(grid, true);
+          }
+          save();
+          buildControls();
+          refreshSoon();
+        },
+      });
+      return h('div', { class: 'st-sheet st-sheet-text' }, area);
     }
 
     function buildData() {
+      const rowsUsed = Math.max(0, ...state.cols.map((c) => c.cells.filter((v) => v.trim() !== '').length));
+      const button = (label, iconName, onclick, props = {}) =>
+        h(
+          'button',
+          { class: 'btn btn-small', type: 'button', onclick, ...props },
+          iconName ? icon(iconName, 14) : null,
+          label,
+        );
       dataBox.replaceChildren(
         h(
           'div',
-          { class: 'st-columns' },
-          state.cols.map((col, i) => {
-            const name = h('input', {
-              class: 'input st-name',
-              type: 'text',
-              maxlength: String(MAX_NAME),
-              'aria-label': `Name of column ${i + 1}`,
-              value: col.name,
-              oninput: () => {
-                col.name = text(name.value, MAX_NAME);
-                save();
-              },
-              onchange: () => buildControls(),
-            });
-            const area = h('textarea', {
-              class: 'input st-area',
-              rows: '9',
-              spellcheck: 'false',
-              'aria-label': `Values in ${col.name}, one per line`,
-              placeholder: 'One value per line',
-              value: col.cells.join('\n'),
-              oninput: () => {
-                col.cells = area.value
-                  .split('\n')
-                  .slice(0, MAX_ROWS)
-                  .map((v) => text(v, MAX_CELL));
-                save();
-                refreshSoon();
-              },
-              onpaste: (event) => {
-                const pasted = event.clipboardData?.getData('text') ?? '';
-                const grid = /[\t\n]/.test(pasted.trim()) && pasted.includes('\t') ? parsePastedTable(pasted) : null;
-                if (!grid) return;
-                event.preventDefault();
-                fillColumns(i, grid);
-                save();
-                buildData();
-                buildControls();
-                refresh();
-              },
-            });
-            const remove = h(
-              'button',
-              {
-                class: 'btn btn-quiet btn-icon gr-tool',
-                type: 'button',
-                'aria-label': `Remove column ${i + 1}`,
-                title: 'Remove column',
-                disabled: state.cols.length <= 2,
-                onclick: () => {
-                  state.cols.splice(i, 1);
-                  Object.assign(state, normalize(state));
-                  save();
-                  buildData();
-                  buildControls();
-                  refresh();
-                },
-              },
-              '\u00d7',
-            );
-            return h('div', { class: 'st-column' }, h('div', { class: 'st-column-head' }, name, remove), area);
+          { class: 'st-data-actions' },
+          button('Upload CSV', 'upload', () => fileInput.click()),
+          button('Download', 'download', downloadCsv),
+          button(textMode ? 'Back to grid' : 'Edit as text', null, () => {
+            textMode = !textMode;
+            buildData();
           }),
+          fileInput,
         ),
+        textMode ? buildText() : buildGrid(),
         h(
           'div',
-          { class: 'st-data-actions' },
+          { class: 'st-data-foot' },
           h(
-            'button',
-            {
-              class: 'btn btn-small',
-              type: 'button',
-              disabled: state.cols.length >= MAX_COLUMNS,
-              onclick: () => {
-                state.cols.push({ name: `Column ${state.cols.length + 1}`, cells: [] });
-                save();
-                buildData();
-                buildControls();
-              },
-            },
-            'Add column',
+            'span',
+            { class: 'st-count', 'aria-live': 'polite' },
+            `${rowsUsed} ${rowsUsed === 1 ? 'row' : 'rows'}, ${state.cols.length} columns`,
           ),
           h(
-            'button',
-            {
-              class: 'btn btn-small',
-              type: 'button',
-              onclick: () => {
-                state.cols = EXAMPLE.map((c) => ({ name: c.name, cells: [...c.cells] }));
-                state.describe.col = 0;
-                state.regress.x = 0;
-                state.regress.y = 1;
-                save();
-                buildData();
-                buildControls();
-                refresh();
-              },
-            },
-            'Load an example',
-          ),
-          h(
-            'button',
-            {
-              class: 'btn btn-small btn-quiet',
-              type: 'button',
-              onclick: () => {
-                for (const c of state.cols) c.cells = [];
-                save();
-                buildData();
-                refresh();
-              },
-            },
-            'Clear values',
+            'span',
+            { class: 'st-data-actions' },
+            textMode
+              ? null
+              : button(
+                  'Add column',
+                  'plus',
+                  () => {
+                    state.cols.push({ name: defaultName(state.cols.length), cells: [] });
+                    buildData();
+                    save();
+                    buildControls();
+                  },
+                  { disabled: state.cols.length >= MAX_COLUMNS },
+                ),
+            button('Example', null, () => {
+              state.cols = EXAMPLE.map((c) => ({ name: c.name, cells: [...c.cells] }));
+              state.describe.col = 0;
+              state.regress.x = 0;
+              state.regress.y = 1;
+              buildData();
+              afterShapeChange();
+            }),
+            button('Clear', null, () => {
+              for (const c of state.cols) c.cells = [];
+              buildData();
+              save();
+              refresh();
+            }),
           ),
         ),
-        h('p', { class: 'st-hint' }, 'Paste from a spreadsheet into any column to fill several at once.'),
+        h(
+          'p',
+          { class: 'st-hint' },
+          textMode
+            ? 'One row per line, values separated by commas. The first line holds the column names.'
+            : 'Type into the grid, or paste cells from a spreadsheet or CSV text. Arrow keys move between cells.',
+        ),
       );
     }
 
@@ -1004,7 +1220,12 @@ export default {
       dataBox,
     );
     const options = h('section', { class: 'st-options', 'aria-label': 'What to do with the data' }, modeBar, controls);
-    const stage = h('div', { class: 'st-stage' }, options, h('div', { class: 'st-charts' }, main, second), results);
+    const stage = h(
+      'div',
+      { class: 'st-stage' },
+      options,
+      h('div', { class: 'st-output' }, h('div', { class: 'st-charts' }, main, second), results),
+    );
     root.classList.add('tool', 'stats-tool');
     root.append(h('div', { class: 'stats-layout' }, panel, stage));
 

@@ -756,73 +756,204 @@
   grid-column: 1 / -1;
 }
 
-/* Statistics */
+/* Statistics: a spreadsheet on the left, the analysis on the right. */
 
 .stats-layout {
   display: grid;
-  grid-template-columns: minmax(260px, 340px) minmax(0, 1fr);
+  grid-template-columns: minmax(320px, 440px) minmax(0, 1fr);
   height: 100%;
   min-height: 0;
 }
 
 .st-panel {
+  display: flex;
   min-height: 0;
-  padding: 14px;
-  overflow-y: auto;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  overflow: hidden;
   border-right: 1px solid var(--border);
   background: var(--surface);
 }
 
 .st-heading {
-  margin: 12px 0 6px;
+  margin: 0;
+  color: var(--text-muted);
   font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: var(--text-muted);
 }
 
-.st-heading:first-child {
-  margin-top: 0;
-}
-
-.st-columns {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-}
-
-.st-column-head {
+.st-data {
   display: flex;
-  align-items: center;
-  gap: 2px;
-}
-
-.st-name {
-  min-width: 0;
+  min-height: 0;
   flex: 1;
-  font-weight: 600;
-}
-
-.st-area {
-  width: 100%;
-  margin-top: 4px;
-  font-family: var(--font-mono);
-  resize: vertical;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .st-data-actions {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 6px;
-  margin-top: 8px;
+}
+
+.st-data-actions .btn svg {
+  margin-right: 4px;
+}
+
+.st-data-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 10px;
+}
+
+.st-count {
+  color: var(--text-muted);
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
 }
 
 .st-hint,
 .st-note {
-  margin: 8px 0 0;
+  margin: 0;
   color: var(--text-muted);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.st-note {
+  margin-top: 8px;
+}
+
+/* The data grid. Column names and row numbers stay in view while the cells scroll. */
+
+.st-sheet {
+  min-height: 220px;
+  flex: 1;
+  overflow: auto;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--canvas-bg, var(--surface));
+}
+
+.st-grid {
+  width: max-content;
+  min-width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
   font-size: 13px;
+}
+
+.st-grid th,
+.st-grid td {
+  padding: 0;
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+
+.st-grid thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--surface-2);
+}
+
+.st-corner,
+.st-rownum {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  width: 38px;
+  min-width: 38px;
+  background: var(--surface-2);
+  color: var(--text-muted);
+  font: 11px var(--font-mono);
+  text-align: center;
+  user-select: none;
+}
+
+.st-grid thead .st-corner {
+  z-index: 3;
+}
+
+.st-colhead {
+  display: flex;
+  align-items: center;
+  min-width: 96px;
+}
+
+.st-name {
+  width: 100%;
+  min-width: 0;
+  flex: 1;
+  padding: 7px 8px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text);
+  font: 600 13px var(--font-ui);
+}
+
+.st-name:focus-visible,
+.st-cell:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.st-remove {
+  width: 22px;
+  min-height: 22px;
+  margin-right: 4px;
+  opacity: 0;
+}
+
+.st-grid th:hover .st-remove,
+.st-grid th:focus-within .st-remove {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .st-remove {
+    opacity: 1;
+  }
+}
+
+.st-cell {
+  display: block;
+  width: 100%;
+  min-width: 96px;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text);
+  font: 13px var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.st-cell:focus {
+  background: var(--accent-soft);
+}
+
+.st-sheet-text {
+  display: flex;
+}
+
+.st-csv {
+  width: 100%;
+  min-height: 220px;
+  flex: 1;
+  border: 0;
+  border-radius: 0;
+  font: 13px/1.6 var(--font-mono);
+  resize: none;
+  white-space: pre;
 }
 
 /* ------------------------------------------------------------------- stage */
@@ -834,7 +965,7 @@
   min-height: 0;
   flex-direction: column;
   gap: 12px;
-  padding: 14px;
+  padding: 12px 16px 16px;
   overflow-y: auto;
 }
 
@@ -843,50 +974,60 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
-  padding: 12px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  background: var(--surface);
+  padding: 0 0 12px;
+  border-bottom: 1px solid var(--border);
 }
 
 .st-modes {
-  display: inline-flex;
-  align-self: flex-start;
+  display: flex;
   flex-wrap: wrap;
   gap: 2px;
-  padding: 2px;
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-sm);
-  background: var(--surface-2);
+  border-bottom: 1px solid var(--border);
 }
 
 .st-modes .btn {
-  min-height: 30px;
-  border-color: transparent;
+  min-height: 34px;
+  margin-bottom: -1px;
+  padding-inline: 14px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
   background: transparent;
+  color: var(--text-muted);
+}
+
+.st-modes .btn:hover {
+  color: var(--text);
 }
 
 .st-modes .btn[aria-pressed='true'] {
-  border-color: var(--border-strong);
-  background: var(--surface);
+  border-bottom-color: var(--accent);
+  color: var(--text);
   font-weight: 600;
 }
 
 .st-controls {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
   align-items: end;
   gap: 10px 12px;
 }
 
 .st-controls .st-hint {
   grid-column: 1 / -1;
-  margin: 0;
+}
+
+/* Chart and numbers sit side by side when there is room, and stack when there is not. */
+.st-output {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(280px, 1fr);
+  align-items: start;
+  gap: 16px;
 }
 
 .st-charts {
-  min-width: 0;
   display: grid;
+  min-width: 0;
   gap: 8px;
 }
 
@@ -897,23 +1038,24 @@
   inset: auto;
   cursor: default;
   width: 100%;
-  height: 300px;
+  height: 340px;
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
+  background: var(--canvas-bg, var(--surface));
 }
 
 .st-canvas-small {
-  height: 180px;
+  height: 190px;
 }
 
 /* ----------------------------------------------------------------- results */
 
 .st-results {
   display: flex;
+  min-width: 0;
   flex-direction: column;
   align-items: flex-start;
   gap: 10px;
-  padding: 0 0 12px;
 }
 
 .st-results > * {
@@ -923,8 +1065,8 @@
 
 .st-tiles {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 8px;
   align-self: stretch;
 }
 
@@ -933,7 +1075,7 @@
   min-width: 0;
   flex-direction: column;
   gap: 2px;
-  padding: 10px 12px;
+  padding: 9px 12px;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--surface);
@@ -949,7 +1091,7 @@
 
 .st-tile-value {
   overflow-wrap: anywhere;
-  font-size: 20px;
+  font-size: 19px;
   font-variant-numeric: tabular-nums;
   line-height: 1.25;
 }
@@ -988,7 +1130,6 @@
 
 .st-table {
   width: 100%;
-  max-width: 560px;
   border-collapse: collapse;
 }
 
@@ -1006,14 +1147,19 @@
   color: var(--text-muted);
 }
 
+@media (max-width: 1180px) {
+  .st-output {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 @media (max-width: 760px) {
   .stats-layout {
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-rows: minmax(260px, 45%) minmax(0, 1fr);
   }
 
   .st-panel {
-    max-height: 45%;
     border-right: 0;
     border-bottom: 1px solid var(--border);
   }
@@ -1047,4 +1193,145 @@
 
 .gr-list:not(.gr-compact) > .gr-row[data-kind='note']::before {
   content: none;
+}
+
+/* Graphing, Desmos style: a white canvas, a gutter beside the expression list, an add bar that stays at the
+   top of the list, and a vertical stack of view buttons over the graph. Shared by the 2D and 3D tools. */
+
+.graph-tool {
+  --canvas-bg: #ffffff;
+  --canvas-grid: #d9d9d9;
+  --canvas-axis: #595959;
+  --canvas-text: #3a3a3a;
+  --gutter: #f1f1f1;
+}
+
+:root[data-theme='dark'] .graph-tool {
+  --canvas-bg: #0f1612;
+  --canvas-grid: #1d2820;
+  --canvas-axis: #54675a;
+  --canvas-text: #8fa192;
+  --gutter: var(--surface-2);
+}
+
+@media (min-width: 961px) {
+  .graph-layout {
+    grid-template-columns: minmax(300px, 380px) minmax(0, 1fr);
+  }
+
+  .graph-layout.is-collapsed {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .graph-layout.is-collapsed > .gr-panel {
+    display: none;
+  }
+}
+
+.graph-tool .gr-panel {
+  z-index: 1;
+  border-right: 1px solid var(--border-strong);
+  box-shadow: 2px 0 6px rgb(0 0 0 / 6%);
+}
+
+.graph-tool .gr-add {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  order: -1;
+  flex-wrap: nowrap;
+  gap: 4px;
+  padding: 6px 8px;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--border-strong);
+  background: var(--surface);
+}
+
+.graph-tool .gr-add .btn {
+  flex: none;
+  min-height: 32px;
+  padding: 0 10px;
+  font-size: 13px;
+}
+
+.graph-tool .gr-add .btn:first-child {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-contrast);
+}
+
+.graph-tool .gr-add .btn:first-child:hover {
+  background: var(--accent-hover);
+}
+
+/* Numbered rows sit on a grey gutter; the row being edited gets a bar in its own colour. */
+.graph-tool .gr-list:not(.gr-compact) > .gr-row {
+  padding-block: 6px;
+  border-bottom-color: var(--border-strong);
+  background-image: linear-gradient(to right, var(--gutter) 0 44px, transparent 44px);
+}
+
+.graph-tool .gr-row.is-selected {
+  box-shadow: inset 4px 0 0 var(--row-color, var(--accent));
+}
+
+.graph-tool .gr-input {
+  font-size: 16px;
+}
+
+.graph-tool .gr-help {
+  padding-top: 12px;
+}
+
+/* View buttons: settings, zoom, reset, and so on, stacked in the top right corner of the graph. */
+.graph-tool .gr-tools {
+  top: 10px;
+  right: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 0;
+  border: 0;
+  background: none;
+}
+
+.graph-tool .gr-tools .btn,
+.gr-sidebar-toggle {
+  width: 38px;
+  min-height: 38px;
+  border-color: var(--border-strong);
+  border-radius: 4px;
+  background: var(--surface);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 22%);
+}
+
+.graph-tool .gr-tools .btn:hover,
+.gr-sidebar-toggle:hover {
+  background: var(--surface-2);
+}
+
+.graph-tool .gr-settings {
+  top: 10px;
+  right: 58px;
+}
+
+.gr-sidebar-toggle {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 3;
+}
+
+.graph-tool .plot-readout {
+  left: 58px;
+}
+
+@media (max-width: 960px) {
+  .gr-sidebar-toggle {
+    display: none;
+  }
+
+  .graph-tool .plot-readout {
+    left: 10px;
+  }
 }

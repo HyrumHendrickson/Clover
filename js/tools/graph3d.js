@@ -16,6 +16,7 @@ import {
 } from '../lib/graph3d/mesh.js';
 import { Graph3DModel, isPoint3Value } from '../lib/graph3d/model.js';
 import { renderScene } from '../lib/graph3d/render.js';
+import { sidebarToggle } from '../lib/graph/chrome.js';
 import { fitCanvas, themeColors } from '../lib/viewport.js';
 
 const MAX_ROWS = 40;
@@ -205,7 +206,7 @@ export default {
         items.push({ id: row.id, color: rowColor(row.color, dark), ...mesh });
       }
       const result = renderScene(g, camera, new Box(state.bounds), items, {
-        colors: themeColors(),
+        colors: themeColors(root),
         grid: state.grid,
         numbers: state.numbers,
         wire: state.wire,
@@ -581,8 +582,8 @@ export default {
       h('button', { class: 'btn btn-icon', type: 'button', 'aria-label': label, title: label, onclick }, icon(name));
     const tools = h(
       'div',
-      { class: 'gr-tools btn-group', role: 'group', 'aria-label': 'View' },
-      preset,
+      { class: 'gr-tools', role: 'group', 'aria-label': 'View' },
+      settingsButton,
       iconButton('zoom-in', 'Zoom in', () => {
         camera.zoomBy(1.25);
         changeCamera();
@@ -593,7 +594,6 @@ export default {
       }),
       iconButton('home', 'Reset view', resetView),
       iconButton('image', 'Save image', saveImage),
-      settingsButton,
     );
 
     const panel = h(
@@ -623,7 +623,18 @@ export default {
         ),
       ),
     );
-    const stage = h('div', { class: 'gr-stage plot-body g3-stage' }, base, marker, readout, status, tools, settings);
+    const stage = h(
+      'div',
+      { class: 'gr-stage plot-body g3-stage' },
+      base,
+      marker,
+      readout,
+      status,
+      sidebarToggle(),
+      tools,
+      h('div', { class: 'g3-views' }, preset),
+      settings,
+    );
 
     root.classList.add('tool', 'graph-tool', 'graph3d-tool');
     root.append(h('div', { class: 'graph-layout' }, panel, stage));

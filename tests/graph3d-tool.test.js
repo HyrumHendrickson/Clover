@@ -212,3 +212,16 @@ test('the launcher preview draws without errors', () => {
     graph3d.preview(c, { bg: '#fff', grid: '#ddd', axis: '#999', text: '#555', ink: '#111', a: '#2563eb' }),
   );
 });
+
+test('the 3D view buttons form one stack, the preset sits on the graph, and the sidebar can be hidden', () => {
+  const labels = qa('.gr-tools button').map((b) => b.getAttribute('aria-label'));
+  assert.equal(labels[0], '3D graph settings');
+  assert.ok(labels.includes('Zoom in') && labels.includes('Reset view'));
+  assert.equal(qa('.gr-tools select').length, 0, 'the preset is not in the stack');
+  assert.ok(q('.g3-views select[aria-label="Preset view"]'));
+  const layout = q('.graph-layout');
+  q('.gr-sidebar-toggle').click();
+  assert.equal(layout.classList.contains('is-collapsed'), true);
+  q('.gr-sidebar-toggle').click();
+  assert.equal(layout.classList.contains('is-collapsed'), false);
+});

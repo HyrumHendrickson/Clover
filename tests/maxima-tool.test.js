@@ -60,3 +60,36 @@ test('state survives a round trip and hostile input is cleaned', () => {
   assert.equal(state.inputs[1].length, 2000);
   assert.deepEqual(maxima.normalize(state), state);
 });
+
+test('a fresh session shows starting points, and they disappear once a command has run', () => {
+  const fresh = app.addTab({ type: 'maxima' });
+  const area = document.getElementById(`panel-${fresh.id}`);
+  const empty = area.querySelector('.mx2-empty');
+  assert.equal(empty.hidden, false);
+  assert.ok(empty.querySelectorAll('.mx2-card').length >= 4);
+  empty.querySelector('.mx2-card').click();
+  assert.equal(area.querySelectorAll('.mx2-entry').length, 1);
+  assert.equal(empty.hidden, true);
+  area.querySelector('.mx2-remove').click();
+  assert.equal(empty.hidden, false, 'removing the last command brings them back');
+});
+
+test('the reference puts an example in the input without running it', () => {
+  const before = qa('.mx2-entry').length;
+  const item = qa('.mx2-ref-item').find((b) => b.textContent.includes('subst('));
+  assert.ok(item);
+  item.click();
+  assert.equal(q('.mx2-input').value, 'subst(2, x, x^2+1);');
+  assert.equal(qa('.mx2-entry').length, before);
+  q('.mx2-run').click();
+  assert.match(qa('.mx2-entry').at(-1).textContent, /\(%o\d+\).*5/);
+});
+
+test('every example the page offers runs without an error', async () => {
+  const { Session } = await import('../js/lib/cas.js');
+  const source = await import('node:fs').then((fs) => fs.readFileSync('js/tools/maxima.js', 'utf8'));
+  const codes = [...source.matchAll(/'((?:[a-z]+\([^']*\)|[a-z]\(x\) := [^']*|a: 5|%);)'/g)].map((m) => m[1]);
+  assert.ok(codes.length >= 12, 'the examples were found');
+  const session = new Session();
+  for (const code of codes) assert.doesNotThrow(() => session.run(code), code);
+});

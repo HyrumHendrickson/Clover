@@ -25,11 +25,21 @@
   pointer-events: none;
 }
 
+.g3-views {
+  position: absolute;
+  bottom: 12px;
+  left: 12px;
+  z-index: 2;
+}
+
 .g3-preset {
-  min-height: 36px;
-  min-width: 84px;
-  border: 0;
-  background: transparent;
+  min-height: 34px;
+  min-width: 96px;
+  padding: 0 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  background: var(--surface);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 22%);
 }
 
 .g3-bounds {

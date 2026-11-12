@@ -49,7 +49,7 @@ test('hostile state is repaired, not trusted', () => {
     dist: { kind: 'constructor', params: { mean: 'nope', evil: 1 }, shade: 7 },
     tests: { kind: 'x', tail: 'sideways', col: 3.5 },
   });
-  assert.equal(state.cols.length, 4);
+  assert.equal(state.cols.length, 5, 'non-objects are dropped and empty objects become columns');
   assert.equal(state.cols[0].name.length, 20);
   assert.ok(state.cols[0].cells.every((c) => typeof c === 'string' && c.length <= 24));
   assert.equal(state.describe.chart, 'histogram');
@@ -67,7 +67,7 @@ test('hostile state is repaired, not trusted', () => {
 });
 
 test('an example fills the columns and the summary appears', async () => {
-  click(byText('Load an example'));
+  click(byText('Example'));
   await settle();
   assert.equal(tab.state.cols[0].name, 'Hours');
   assert.equal(cell('Count'), '10');
@@ -76,25 +76,158 @@ test('an example fills the columns and the summary appears', async () => {
   assert.equal(cell('Outliers'), 'none');
 });
 
-test('typing a value updates the summary', async () => {
-  const area = qa('.st-area')[0];
-  type(window, area, '1\n2\n3\n4\nabc\n100');
+test('typing into the grid updates the summary and grows the sheet', async () => {
+  click(byText('Clear'));
+  const cells = () => qa('.st-cell');
+  const before = qa('.st-grid tbody tr').length;
+  const first = (n) => qa(`.st-grid tbody tr:nth-child(${n}) .st-cell`)[0];
+  ['1', '2', '3', '4', 'abc', '100'].forEach((v, i) => type(window, first(i + 1), v));
   await settle();
-  assert.deepEqual(tab.state.cols[0].cells, ['1', '2', '3', '4', 'abc', '100']);
+  assert.deepEqual(tab.state.cols[0].cells.slice(0, 6), ['1', '2', '3', '4', 'abc', '100']);
   assert.equal(cell('Count'), '5');
   assert.equal(cell('Outliers'), '100');
   assert.match(q('.st-results').textContent, /1 entry was not a number/);
+  assert.ok(cells().length >= before * 2, 'there are cells for every row and column');
+  type(window, first(before), '7');
+  assert.equal(qa('.st-grid tbody tr').length, before + 1, 'typing in the last row adds another');
 });
 
-test('pasting from a spreadsheet spreads across columns', async () => {
-  const area = qa('.st-area')[0];
+test('arrow keys and Enter move between cells', () => {
+  const rows = qa('.st-grid tbody tr');
+  const at = (r, c) => rows[r].querySelectorAll('.st-cell')[c];
+  const key = (el, name) =>
+    el.dispatchEvent(new window.KeyboardEvent('keydown', { key: name, bubbles: true, cancelable: true }));
+  at(0, 0).focus();
+  key(at(0, 0), 'Enter');
+  assert.equal(document.activeElement, at(1, 0));
+  key(at(1, 0), 'ArrowUp');
+  assert.equal(document.activeElement, at(0, 0));
+  at(0, 0).setSelectionRange(1, 1);
+  key(at(0, 0), 'ArrowRight');
+  assert.equal(document.activeElement, at(0, 1));
+});
+
+test('pasting from a spreadsheet fills cells from the one that was pasted into', async () => {
+  const target = qa('.st-grid tbody tr:nth-child(1) .st-cell')[0];
   const event = new window.Event('paste', { bubbles: true, cancelable: true });
   event.clipboardData = { getData: () => '1\t2\n2\t4.1\n3\t5.9\n4\t8.2\n5\t9.8' };
-  area.dispatchEvent(event);
+  target.dispatchEvent(event);
   await settle();
   assert.equal(event.defaultPrevented, true);
-  assert.deepEqual(tab.state.cols[1].cells, ['2', '4.1', '5.9', '8.2', '9.8']);
-  assert.equal(tab.state.cols[0].cells.length, 5);
+  assert.deepEqual(tab.state.cols[1].cells.slice(0, 5), ['2', '4.1', '5.9', '8.2', '9.8']);
+  assert.deepEqual(tab.state.cols[0].cells.slice(0, 5), ['1', '2', '3', '4', '5']);
+});
+
+test('a pasted block with a header row names the columns', async () => {
+  const target = qa('.st-grid tbody tr:nth-child(1) .st-cell')[0];
+  const event = new window.Event('paste', { bubbles: true, cancelable: true });
+  event.clipboardData = { getData: () => 'Dose,Response\n1,2\n2,4.1\n3,5.9\n4,8.2\n5,9.8' };
+  target.dispatchEvent(event);
+  event.clipboardData = { getData: () => 'Dose\tResponse\n1\t2\n2\t4.1\n3\t5.9\n4\t8.2\n5\t9.8' };
+  const tabbed = new window.Event('paste', { bubbles: true, cancelable: true });
+  tabbed.clipboardData = event.clipboardData;
+  target.dispatchEvent(tabbed);
+  await settle();
+  assert.deepEqual(
+    tab.state.cols.slice(0, 2).map((c) => c.name),
+    ['Dose', 'Response'],
+  );
+  assert.deepEqual(tab.state.cols[1].cells.slice(0, 5), ['2', '4.1', '5.9', '8.2', '9.8']);
+  assert.equal(tab.state.cols[0].cells[0], '1', 'the header row is not data');
+});
+
+test('a plain single value pastes normally', () => {
+  const target = qa('.st-grid tbody tr:nth-child(1) .st-cell')[0];
+  const event = new window.Event('paste', { bubbles: true, cancelable: true });
+  event.clipboardData = { getData: () => '42' };
+  target.dispatchEvent(event);
+  assert.equal(event.defaultPrevented, false);
+});
+
+const upload = async (name, body, size = body.length) => {
+  const input = q('.st-file');
+  const file = { name, size, text: async () => body };
+  Object.defineProperty(input, 'files', { configurable: true, value: [file] });
+  input.dispatchEvent(new window.Event('change', { bubbles: true }));
+  await tick(60);
+};
+
+test('uploading a CSV replaces the data, uses its header, and reports what loaded', async () => {
+  await upload('scores.csv', 'Hours,Score,Group\n1,50,a\n2,60,b\n3,71,a\n4,79,b\n');
+  await settle();
+  assert.deepEqual(
+    tab.state.cols.map((c) => c.name),
+    ['Hours', 'Score', 'Group'],
+  );
+  assert.deepEqual(tab.state.cols[1].cells, ['50', '60', '71', '79']);
+  assert.equal(tab.state.cols[0].cells.length, 4);
+  assert.match(
+    [...document.querySelectorAll('.toast')].at(-1).textContent,
+    /Loaded 4 rows and 3 columns from scores\.csv/,
+  );
+  assert.equal(cell('Count'), '4');
+  assert.equal(cell('Mean'), '2.5');
+});
+
+test('a CSV without a header gets numbered columns, and extra columns are cut', async () => {
+  await upload('raw.csv', '1,2,3,4,5,6,7,8,9,10\n2,3,4,5,6,7,8,9,10,11\n');
+  assert.equal(tab.state.cols.length, 8);
+  assert.equal(tab.state.cols[0].name, 'Column 1');
+  assert.deepEqual(tab.state.cols[0].cells, ['1', '2']);
+  assert.match([...document.querySelectorAll('.toast')].at(-1).textContent, /left out/);
+});
+
+test('an empty or oversized upload is refused in words', async () => {
+  const before = JSON.stringify(tab.state.cols);
+  await upload('empty.csv', '\n\n');
+  assert.match([...document.querySelectorAll('.toast-error')].at(-1).textContent, /no rows/);
+  await upload('big.csv', 'a,b\n1,2', 5_000_000);
+  assert.match([...document.querySelectorAll('.toast-error')].at(-1).textContent, /over 1 MB/);
+  assert.equal(JSON.stringify(tab.state.cols), before, 'nothing changed');
+});
+
+test('the text view edits the same data as CSV', async () => {
+  click(byText('Edit as text'));
+  const area = q('.st-csv');
+  assert.match(area.value, /^Column 1,Column 2,/);
+  type(window, area, 'height,weight\n1.5,50\n1.6,56\n1.7,63\n1.8,70\n1.9,79');
+  await settle();
+  assert.deepEqual(
+    tab.state.cols.map((c) => c.name),
+    ['height', 'weight'],
+  );
+  assert.deepEqual(tab.state.cols[1].cells, ['50', '56', '63', '70', '79']);
+  assert.equal(cell('Count'), '5');
+  click(byText('Back to grid'));
+  assert.equal(qa('.st-csv').length, 0);
+  assert.equal(qa('.st-grid tbody tr:nth-child(2) .st-cell')[1].value, '56');
+});
+
+test('the data can be downloaded as CSV', () => {
+  const urls = [];
+  const original = globalThis.URL.createObjectURL;
+  globalThis.URL.createObjectURL = (blob) => (urls.push(blob), 'blob:test');
+  const clicked = [];
+  const anchorClick = window.HTMLAnchorElement.prototype.click;
+  window.HTMLAnchorElement.prototype.click = function click() {
+    clicked.push(this.download);
+  };
+  click(byText('Download'));
+  window.HTMLAnchorElement.prototype.click = anchorClick;
+  globalThis.URL.createObjectURL = original;
+  assert.equal(urls.length, 1);
+  assert.equal(urls[0].type, 'text/csv');
+  assert.match(clicked[0], /\.csv$/);
+});
+
+test('the regression data is restored for the tests that follow', async () => {
+  click(byText('Clear'));
+  const target = qa('.st-grid tbody tr:nth-child(1) .st-cell')[0];
+  const event = new window.Event('paste', { bubbles: true, cancelable: true });
+  event.clipboardData = { getData: () => '1\t2\n2\t4.1\n3\t5.9\n4\t8.2\n5\t9.8' };
+  target.dispatchEvent(event);
+  await settle();
+  assert.deepEqual(tab.state.cols[1].cells.slice(0, 5), ['2', '4.1', '5.9', '8.2', '9.8']);
 });
 
 test('regression reports the fit and offers the equation for the Graphing tool', async () => {

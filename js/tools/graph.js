@@ -20,6 +20,7 @@ import {
 import { GraphView, normalizeGraphView } from '../lib/graph/view.js';
 import { evaluateNumber } from '../lib/expr.js';
 import { attachPanZoom } from '../lib/interact.js';
+import { sidebarToggle } from '../lib/graph/chrome.js';
 import { View, drawGrid, fitCanvas, themeColors } from '../lib/viewport.js';
 
 const MAX_ROWS = 60;
@@ -179,7 +180,7 @@ export default {
       }));
       lastItems = items;
       const result = renderGraph(g, view, items, {
-        colors: themeColors(),
+        colors: themeColors(root),
         grid: state.grid,
         minor: state.minor,
         numbers: state.numbers,
@@ -223,7 +224,7 @@ export default {
       const { ctx: g, width, height } = fitCanvas(overlay);
       g.clearRect(0, 0, width, height);
       if (width <= 1) return;
-      const colors = themeColors();
+      const colors = themeColors(root);
       const stale = geometryKey !== viewKey();
       if (!stale) {
         g.save();
@@ -312,7 +313,7 @@ export default {
         const k = pickPoi(px, py);
         if (k >= 0) {
           const [sx, sy] = view.toScreen(poi[k].x, poi[k].y);
-          hover = { sx, sy, color: themeColors().text, text: labelOf(poi[k]), poi: k };
+          hover = { sx, sy, color: themeColors(root).text, text: labelOf(poi[k]), poi: k };
         } else {
           const hit = pick(px, py);
           if (hit) {
@@ -1036,7 +1037,8 @@ export default {
     });
     const tools = h(
       'div',
-      { class: 'gr-tools btn-group', role: 'group', 'aria-label': 'View' },
+      { class: 'gr-tools', role: 'group', 'aria-label': 'View' },
+      settingsButton,
       h(
         'button',
         {
@@ -1083,7 +1085,6 @@ export default {
         { class: 'btn btn-icon', type: 'button', 'aria-label': 'Save image', title: 'Save image', onclick: saveImage },
         icon('image'),
       ),
-      settingsButton,
     );
 
     const panel = h(
@@ -1113,7 +1114,7 @@ export default {
         ),
       ),
     );
-    const stage = h('div', { class: 'gr-stage plot-body' }, base, overlay, readout, tools, settings);
+    const stage = h('div', { class: 'gr-stage plot-body' }, base, overlay, readout, sidebarToggle(), tools, settings);
 
     root.classList.add('tool', 'graph-tool');
     root.append(h('div', { class: 'graph-layout' }, panel, stage));

@@ -368,3 +368,24 @@ test('Desmos tabs from format version 1 become graphs and keep their link as a n
     /newer version/,
   );
 });
+
+/* ------------------------------------------------------------------ chrome */
+
+test('the view buttons form one stack, with settings first', () => {
+  const labels = qa('.gr-tools button').map((b) => b.getAttribute('aria-label'));
+  assert.equal(labels[0], 'Graph settings');
+  assert.deepEqual(labels.slice(1, 4), ['Zoom in', 'Zoom out', 'Reset view']);
+});
+
+test('the sidebar button hides and shows the expression list', () => {
+  const layout = q('.graph-layout');
+  const toggle = q('.gr-sidebar-toggle');
+  assert.equal(toggle.getAttribute('aria-expanded'), 'true');
+  toggle.click();
+  assert.equal(layout.classList.contains('is-collapsed'), true);
+  assert.equal(toggle.getAttribute('aria-expanded'), 'false');
+  assert.equal(toggle.getAttribute('aria-label'), 'Show expression list');
+  toggle.click();
+  assert.equal(layout.classList.contains('is-collapsed'), false);
+  assert.equal(toggle.getAttribute('aria-label'), 'Hide expression list');
+});
