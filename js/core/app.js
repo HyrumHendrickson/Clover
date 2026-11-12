@@ -1,10 +1,11 @@
-import { TOOLS, TOOL_LIST } from '../tools/index.js';
+import { TOOL_LIST } from '../tools/index.js';
 import { themeColors } from '../lib/viewport.js';
 import { showDialog } from './dialog.js';
 import { clear, debounce, downloadText, h, slugify, uid } from './dom.js';
 import { icon } from './icons.js';
 import { openMenu } from './menu.js';
 import { store } from './store.js';
+import { baseFromLocation, embedSnippet } from '../lib/embedcode.js';
 import { toast } from './toast.js';
 import {
   ImportError,
@@ -27,8 +28,23 @@ const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
 /** The Clover application shell: tabs, panels, persistence, import and export. */
 export class App {
-  constructor(elements) {
+  /**
+   * @param {object} elements the shell's DOM elements
+   * @param {{ tools?: string[] | null, single?: string | null, persist?: boolean, storageKey?: string }} [options]
+   *   Used when Clover is embedded in another page. `tools` limits which tools can be opened, `single` shows one
+   *   tool and nothing else, and `persist: false` keeps work in memory only. `storageKey` names where to save.
+   */
+  constructor(elements, options = {}) {
     this.el = elements;
+    const only = TOOL_LIST.some((tool) => tool.type === options.single) ? [options.single] : null;
+    const allowed = only ?? (Array.isArray(options.tools) ? options.tools : null);
+    /** The tools this instance can open, in launcher order. */
+    this.toolList = allowed ? TOOL_LIST.filter((tool) => allowed.includes(tool.type)) : TOOL_LIST;
+    this.tools = Object.fromEntries(this.toolList.map((tool) => [tool.type, tool]));
+    this.single = options.single && Object.hasOwn(this.tools, options.single) ? options.single : null;
+    this.persist = options.persist !== false;
+    this.storageKey = options.storageKey;
+    this.themeLocked = false;
     /** @type {{ id: string, type: string, title: string, state: any }[]} */
     this.tabs = [];
     this.activeId = null;
@@ -43,7 +59,22 @@ export class App {
   /* ----------------------------------------------------------------- startup */
 
   init() {
-    const { tabs, activeId } = normalizeWorkspace(store.loadWorkspace(), TOOLS, () => uid('tab'));
+    const saved = this.persist ? store.loadWorkspace(this.storageKey) : null;
+    const { tabs, activeId } = normalizeWorkspace(saved, this.tools, () => uid('tab'));
+    if (this.single) {
+      // One tool, one tab: keep the saved one if there is one, otherwise start fresh.
+      const tool = this.tools[this.single];
+      const kept = tabs.find((t) => t.type === this.single);
+      this.tabs = [
+        kept ?? { id: uid('tab'), type: tool.type, title: tool.name, state: tool.normalize(tool.defaultState()) },
+      ];
+      this.buildLauncher();
+      this.bindShell();
+      this.syncThemeButton();
+      this.renderTabs();
+      this.activate(this.tabs[0].id);
+      return;
+    }
     this.tabs = tabs;
     this.buildLauncher();
     this.bindShell();
@@ -75,6 +106,13 @@ export class App {
             icon: 'download',
             disabled: !this.activeId,
             onSelect: () => this.exportTabFile(this.activeId),
+          },
+          { separator: true },
+          {
+            label: 'Embed on a website\u2026',
+            hint: 'Whole site or one tool',
+            icon: 'external',
+            onSelect: () => this.showEmbedDialog(),
           },
         ],
         { align: 'end' },
@@ -110,13 +148,15 @@ export class App {
       }
     });
     window.matchMedia?.('(prefers-color-scheme: dark)').addEventListener?.('change', (event) => {
-      if (!store.loadTheme()) this.applyTheme(event.matches ? 'dark' : 'light', false);
+      if (!this.themeLocked && (!this.persist || !store.loadTheme())) {
+        this.applyTheme(event.matches ? 'dark' : 'light', false);
+      }
     });
   }
 
   /* ------------------------------------------------------------------- theme */
 
-  applyTheme(theme, remember = true) {
+  applyTheme(theme, remember = this.persist) {
     document.documentElement.dataset.theme = theme;
     if (remember) store.saveTheme(theme);
     this.syncThemeButton();
@@ -125,6 +165,7 @@ export class App {
   }
 
   toggleTheme() {
+    this.themeLocked = true;
     this.applyTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark');
   }
 
@@ -141,7 +182,7 @@ export class App {
 
   buildLauncher() {
     this.previews = [];
-    const cards = TOOL_LIST.map((tool) => {
+    const cards = this.toolList.map((tool) => {
       const canvas = h('canvas', { class: 'launch-preview', 'aria-hidden': 'true' });
       this.previews.push({ tool, canvas });
       return h(
@@ -202,7 +243,7 @@ export class App {
 
   newTabItems() {
     return [
-      ...TOOL_LIST.map((tool) => ({
+      ...this.toolList.map((tool) => ({
         label: tool.name,
         icon: `tool-${tool.type}`,
         onSelect: () => this.addTab({ type: tool.type }),
@@ -219,7 +260,7 @@ export class App {
    * @returns the new tab, or null if the tab limit was reached
    */
   addTab({ type, title, state }, { index = this.tabs.length, activate = true } = {}) {
-    const tool = TOOLS[type];
+    const tool = this.tools[type];
     if (!tool) return null;
     if (this.tabs.length >= MAX_TABS) {
       toast(`Close a tab first. Clover keeps up to ${MAX_TABS} tabs open.`, { kind: 'error' });
@@ -258,7 +299,7 @@ export class App {
     };
     let instance = {};
     try {
-      instance = TOOLS[tab.type].mount(panel, ctx) ?? {};
+      instance = this.tools[tab.type].mount(panel, ctx) ?? {};
     } catch (error) {
       console.error(`Could not open ${tab.type}`, error);
       panel.replaceChildren(
@@ -303,6 +344,7 @@ export class App {
   }
 
   closeTab(id, { undo = true } = {}) {
+    if (this.single) return;
     const index = this.tabs.findIndex((t) => t.id === id);
     if (index < 0) return;
     const [tab] = this.tabs.splice(index, 1);
@@ -555,11 +597,15 @@ export class App {
   /* ------------------------------------------------------------- persistence */
 
   persistNow() {
-    const saved = store.saveWorkspace({
-      version: VERSION,
-      activeId: this.activeId,
-      tabs: this.tabs.map(({ id, type, title, state }) => ({ id, type, title, state })),
-    });
+    if (!this.persist) return;
+    const saved = store.saveWorkspace(
+      {
+        version: VERSION,
+        activeId: this.activeId,
+        tabs: this.tabs.map(({ id, type, title, state }) => ({ id, type, title, state })),
+      },
+      this.storageKey,
+    );
     if (!saved && !this.warnedStorage) {
       this.warnedStorage = true;
       toast('Clover could not save to this browser (storage may be full or blocked). Use Export to keep your work.', {
@@ -645,8 +691,8 @@ export class App {
     this.tabs = entries.slice(0, MAX_TABS).map((entry) => ({
       id: uid('tab'),
       type: entry.type,
-      title: cleanTitle(entry.title, TOOLS[entry.type].name),
-      state: TOOLS[entry.type].normalize(entry.state),
+      title: cleanTitle(entry.title, this.tools[entry.type].name),
+      state: this.tools[entry.type].normalize(entry.state),
     }));
     this.renderTabs();
     const active = this.tabs[Math.min(activeIndex, this.tabs.length - 1)];
@@ -669,10 +715,15 @@ export class App {
     }
     let result;
     try {
-      result = parseImport(text, TOOLS, () => uid('tab'));
+      result = parseImport(text, this.tools, () => uid('tab'));
     } catch (error) {
       if (!(error instanceof ImportError)) throw error;
       toast(error.message, { kind: 'error', duration: 8000 });
+      return;
+    }
+    if (this.single) {
+      const problem = this.openInSingle(result);
+      if (problem) toast(problem, { kind: 'error' });
       return;
     }
     const hasPython = (list) => list.some((t) => t.type === 'python');
@@ -730,6 +781,134 @@ export class App {
     }
   }
 
+  /* ---------------------------------------------------------------- embedding */
+
+  /**
+   * In single-tool mode a file can only replace the one tab.
+   * @returns {string | null} a message when the file has nothing for this tool, otherwise null
+   */
+  openInSingle(result) {
+    const entries = result.kind === 'tab' ? [result.tab] : result.tabs;
+    const entry = entries.find((e) => e.type === this.single);
+    if (!entry) return `This file has no ${this.tools[this.single].name} tab.`;
+    this.loadTabs([entry], 0);
+    return null;
+  }
+
+  /**
+   * Open file text sent by the page that embeds Clover. It gets the same validation as Import and no dialogs.
+   * @returns {{ ok: boolean, message?: string }}
+   */
+  applyExternal(text) {
+    let result;
+    try {
+      result = parseImport(text, this.tools, () => uid('tab'));
+    } catch (error) {
+      if (!(error instanceof ImportError)) throw error;
+      return { ok: false, message: error.message };
+    }
+    if (this.single) {
+      const problem = this.openInSingle(result);
+      return problem ? { ok: false, message: problem } : { ok: true };
+    }
+    if (result.kind === 'tab') {
+      return this.addTab(result.tab) ? { ok: true } : { ok: false, message: 'Too many tabs are open.' };
+    }
+    this.loadTabs(result.tabs, result.activeIndex);
+    return { ok: true };
+  }
+
+  /** Open a tool in a new tab, for the embedding page. Not available when one tool is shown. */
+  openTool(type) {
+    if (this.single || !Object.hasOwn(this.tools, type)) return false;
+    return this.addTab({ type }) !== null;
+  }
+
+  /** The current work as `.clover` file text: the one tab in single-tool mode, otherwise the whole workspace. */
+  exportText() {
+    if (this.single) return JSON.stringify(exportTab(this.tabs[0]));
+    return JSON.stringify(exportWorkspace({ activeId: this.activeId ?? this.tabs[0]?.id ?? null, tabs: this.tabs }));
+  }
+
+  showEmbedDialog() {
+    const active = this.tabs.find((t) => t.id === this.activeId);
+    const base = baseFromLocation(window.location.href);
+    const scope = h(
+      'select',
+      { class: 'select', 'aria-label': 'What to embed' },
+      h('option', { value: 'all' }, 'The whole workspace'),
+      active ? h('option', { value: 'tool' }, `Only this tool: ${this.tools[active.type].name}`) : null,
+    );
+    const style = h(
+      'select',
+      { class: 'select', 'aria-label': 'Kind of code' },
+      h('option', { value: 'iframe' }, 'Plain iframe, works on any page'),
+      h('option', { value: 'element' }, 'Script and <clover-embed>, can open a saved file'),
+    );
+    const code = h('textarea', {
+      class: 'input input-mono embed-code',
+      readonly: true,
+      rows: '9',
+      spellcheck: 'false',
+      'aria-label': 'Code to paste into your page',
+    });
+    const update = () => {
+      const tool = scope.value === 'tool' && active ? active.type : undefined;
+      code.value = embedSnippet({
+        base,
+        tool,
+        style: style.value,
+        title: tool ? `Clover: ${this.tools[tool].name}` : 'Clover',
+      });
+    };
+    scope.addEventListener('change', update);
+    style.addEventListener('change', update);
+    update();
+    const copy = h(
+      'button',
+      {
+        class: 'btn btn-small',
+        type: 'button',
+        onclick: async () => {
+          try {
+            await navigator.clipboard.writeText(code.value);
+            toast('Copied. Paste it into your page.', { kind: 'success' });
+          } catch {
+            code.select();
+            toast('Press Ctrl+C (\u2318+C) to copy the selected code.');
+          }
+        },
+      },
+      icon('copy', 14),
+      ' Copy',
+    );
+    showDialog({
+      title: 'Embed Clover on a website',
+      wide: true,
+      body: [
+        h(
+          'p',
+          {},
+          'Paste this into any page to show Clover there. Visitors get their own copy; nothing they do is saved to your site or to your workspace.',
+        ),
+        h(
+          'div',
+          { class: 'embed-options' },
+          h('label', { class: 'field' }, h('span', { class: 'field-label' }, 'Show'), scope),
+          h('label', { class: 'field' }, h('span', { class: 'field-label' }, 'Code'), style),
+        ),
+        code,
+        h('div', { class: 'embed-actions' }, copy),
+        h(
+          'p',
+          { class: 'dialog-note' },
+          'Pick a tool to show only that tab. Options such as theme, which tools to offer, and starting content are in docs/embedding.md.',
+        ),
+      ],
+      actions: [{ label: 'Close', value: true, kind: 'primary' }],
+    });
+  }
+
   /* -------------------------------------------------------------------- help */
 
   showHelp() {
@@ -744,7 +923,7 @@ export class App {
           h(
             'ul',
             {},
-            TOOL_LIST.map((tool) => h('li', {}, h('strong', {}, tool.name), ` \u2013 ${tool.description}`)),
+            this.toolList.map((tool) => h('li', {}, h('strong', {}, tool.name), ` \u2013 ${tool.description}`)),
           ),
         ),
         section(
@@ -773,7 +952,7 @@ export class App {
             h(
               'li',
               {},
-              'Your tabs are saved automatically in this browser (local storage). Nothing is sent to a server.',
+              'Your tabs are saved automatically in this browser (local storage). Nothing is sent to a server, except the program and input of a Programming tab when you press Run.',
             ),
             h(
               'li',

@@ -3,9 +3,9 @@
  * (`{ x: [min, max], y: [min, max], layers }`), which `drawChart` paints. Keeping the two
  * apart lets the layout be unit tested without a canvas.
  *
- * Layer kinds: bars, line, area, points, vline, box, dots.
+ * Layer kinds: bars, line, area, points, hline, vline, box, dots.
  */
-import { histogramBins, quantile } from './stats.js';
+import { DISTRIBUTIONS, histogramBins, quantile } from './stats.js';
 import { formatTick } from './viewport.js';
 import { axisTicks } from './graph/view.js';
 
@@ -115,17 +115,23 @@ export function residualSpec(xs, residuals) {
 }
 
 /**
- * A density or mass function with a shaded region. `shade` is `{ from, to }` (either may be
- * infinite) or null. Discrete distributions become bars, one per whole number.
+ * A density or mass function with shaded regions. `shade` is `{ from, to }` (either may be infinite), a list of
+ * those (a two-sided p-value has two tails), or null. Discrete distributions become bars, one per whole number.
  */
 export function distributionSpec(dist, discrete, shade = null) {
+  const regions = shade ? (Array.isArray(shade) ? shade : [shade]) : [];
   const [rawLo, rawHi] = dist.range;
   if (discrete) {
     const lo = Math.max(0, Math.floor(rawLo));
     const hi = Math.min(lo + 200, Math.ceil(rawHi));
     const bars = [];
     for (let k = lo; k <= hi; k += 1) {
-      bars.push({ x0: k - 0.4, x1: k + 0.4, y: dist.pdf(k), shaded: shade ? k >= shade.from && k <= shade.to : false });
+      bars.push({
+        x0: k - 0.4,
+        x1: k + 0.4,
+        y: dist.pdf(k),
+        shaded: regions.some((r) => k >= r.from && k <= r.to),
+      });
     }
     const top = Math.max(...bars.map((b) => b.y)) || 1;
     return {
@@ -145,13 +151,43 @@ export function distributionSpec(dist, discrete, shade = null) {
   }
   const top = Math.max(...pts.map((p) => p[1]).filter((y) => y < 1e6)) || 1;
   const layers = [];
-  if (shade) {
-    const a = Math.max(lo, shade.from);
-    const b = Math.min(hi, shade.to);
+  for (const region of regions) {
+    const a = Math.max(lo, region.from);
+    const b = Math.min(hi, region.to);
     if (b > a) layers.push({ kind: 'area', pts: pts.filter((p) => p[0] >= a && p[0] <= b), from: a, to: b });
   }
   layers.push({ kind: 'line', pts, role: 'curve' });
   return { x: [lo, hi], y: [0, top * 1.1], xLabel: '', yLabel: 'Density', layers };
+}
+
+/**
+ * The distribution of a test statistic with the p-value region shaded and the observed statistic marked.
+ * @param {{ family: 'normal' | 't' | 'chisq', dof: number | null, tails: boolean }} distribution from `testDistribution`
+ * @param {number} score the observed statistic
+ * @param {'two' | 'left' | 'right'} tail
+ * @returns {object | null} null when the distribution cannot be built or the statistic is not finite
+ */
+export function testSpec({ family, dof, tails }, score, tail) {
+  if (!Number.isFinite(score)) return null;
+  const base = DISTRIBUTIONS[family].make(family === 'normal' ? { mean: 0, sd: 1 } : { df: dof });
+  if (!base) return null;
+  // Widen the range so the statistic is always on the chart, even when it is far out.
+  const reach = Math.abs(score) + 1;
+  const range = tails
+    ? [Math.min(base.range[0], -reach), Math.max(base.range[1], reach)]
+    : [base.range[0], Math.max(base.range[1], score * 1.15 + 1)];
+  const dist = { ...base, range };
+  let shade;
+  if (!tails || tail === 'right') shade = [{ from: score, to: Infinity }];
+  else if (tail === 'left') shade = [{ from: -Infinity, to: score }];
+  else
+    shade = [
+      { from: -Infinity, to: -Math.abs(score) },
+      { from: Math.abs(score), to: Infinity },
+    ];
+  const spec = distributionSpec(dist, false, shade);
+  spec.layers.push({ kind: 'vline', x: score, label: 'statistic' });
+  return spec;
 }
 
 /* ----------------------------------------------------------------- drawing */
@@ -229,7 +265,7 @@ export function drawChart(g, width, height, spec, colors) {
   return map;
 }
 
-function paintLayer(g, layer, { sx, sy }, colors, { w, m }) {
+function paintLayer(g, layer, { sx, sy }, colors, { w, h, m }) {
   switch (layer.kind) {
     case 'bars':
       for (const b of layer.bars) {
@@ -274,6 +310,26 @@ function paintLayer(g, layer, { sx, sy }, colors, { w, m }) {
       g.lineTo(m.l + w, sy(layer.y));
       g.stroke();
       break;
+    case 'vline': {
+      const x = sx(layer.x);
+      g.save();
+      g.strokeStyle = colors.ink;
+      g.lineWidth = 2;
+      g.setLineDash([6, 4]);
+      g.beginPath();
+      g.moveTo(x, m.t);
+      g.lineTo(x, m.t + h);
+      g.stroke();
+      g.restore();
+      if (layer.label) {
+        g.fillStyle = colors.ink;
+        g.font = FONT;
+        g.textBaseline = 'top';
+        g.textAlign = x > m.l + w / 2 ? 'right' : 'left';
+        g.fillText(layer.label, x + (x > m.l + w / 2 ? -6 : 6), m.t + 4);
+      }
+      break;
+    }
     case 'dots':
       g.fillStyle = colors.a;
       for (const d of layer.dots) {

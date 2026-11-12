@@ -14,12 +14,12 @@ export default [
     },
   },
   {
-    files: ['js/**/*.js', 'runner/latex.js'],
+    files: ['js/**/*.js', 'runner/latex.js', 'runner/code.js'],
     languageOptions: { ecmaVersion: 2023, sourceType: 'module', globals: { ...globals.browser } },
   },
   {
     // Classic scripts: no module syntax, and `Sk` comes from the vendored Skulpt build.
-    files: ['js/theme-init.js', 'runner/runner.js'],
+    files: ['js/theme-init.js', 'runner/runner.js', 'embed.js'],
     languageOptions: { ecmaVersion: 2020, sourceType: 'script', globals: { ...globals.browser, Sk: 'readonly' } },
     rules: { 'no-var': 'off', 'prefer-const': 'off' },
   },

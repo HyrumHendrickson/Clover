@@ -1,0 +1,38 @@
+/* Clover shown inside another page. index.html sets data-embed on the root element (see js/core/embed.js). */
+
+/* One tool: no page chrome at all, so the tool fills the frame. */
+:root[data-embed='tool'] body {
+  grid-template-rows: minmax(0, 1fr);
+}
+
+:root[data-embed='tool'] .topbar,
+:root[data-embed='tool'] .skip-link {
+  display: none;
+}
+
+/* The "Embed on a website" dialog. */
+.embed-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin: 12px 0 10px;
+}
+
+.embed-code {
+  width: 100%;
+  resize: vertical;
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.embed-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin: 8px 0;
+}
+
+@media (max-width: 560px) {
+  .embed-options {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

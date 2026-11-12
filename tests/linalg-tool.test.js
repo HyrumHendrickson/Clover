@@ -61,7 +61,9 @@ test('clicking a vector line draws the vector and says where it points', async (
   assert.match(q('.mx-caption').textContent, /Click a line|^$/);
   select('x');
   assert.equal(line('x').classList.contains('is-selected'), true);
-  assert.match(q('.mx-caption').textContent, /x = \(2, 0\)\. Its length is 2\./);
+  assert.match(q('.mx-legend').textContent, /x = \(2, 0\)/);
+  assert.match(q('.mx-caption').textContent, /Length 2, pointing 0\u00b0 from the x axis\./);
+  assert.match(q('.mx-more-text').textContent, /x = \(2, 0\)\. Its length is 2\./);
   assert.match(q('canvas').getAttribute('aria-label'), /Drawing\. x = \(2, 0\)/);
   assert.equal(q('.mx-viz-controls').hidden, true, 'a plain vector has nothing to apply');
 });
@@ -79,12 +81,13 @@ test('clicking A*x shows the turn and the scale, with a slider to apply A gradua
 
 test('clicking a matrix describes the determinant and its eigenvectors', () => {
   select('m');
-  const text = q('.mx-caption').textContent;
+  assert.match(q('.mx-caption').textContent, /Areas are multiplied by 3\./);
+  const text = q('.mx-more-text').textContent;
   assert.match(text, /det = 3\./);
   assert.match(text, /\u03bb = 3 along/);
   assert.match(text, /\u03bb = 1 along/);
   select('a');
-  assert.match(q('.mx-caption').textContent, /no real eigenvectors/);
+  assert.match(q('.mx-more-text').textContent, /no real eigenvectors/);
 });
 
 test('eig(S) lists each eigenvalue with its eigenvector, and 3D vectors can be drawn', () => {
@@ -93,7 +96,8 @@ test('eig(S) lists each eigenvalue with its eigenvector, and 3D vectors can be d
   assert.match(eigs[0], /\u03bb = 3, eigenvector \(1, 1\)/);
   assert.match(eigs[1], /\u03bb = 1, eigenvector \(1, -1\)/);
   select('v');
-  assert.match(q('.mx-caption').textContent, /v = \(1, 2, 3\)\. Its length is 3\.742/);
+  assert.match(q('.mx-legend').textContent, /v = \(1, 2, 3\)/);
+  assert.match(q('.mx-caption').textContent, /Length 3\.742\./);
 });
 
 test('editing an entry redraws the selected line', async () => {
@@ -102,5 +106,5 @@ test('editing an entry redraws the selected line', async () => {
   input.value = '5';
   input.dispatchEvent(new window.Event('input', { bubbles: true }));
   await tick(200);
-  assert.match(q('.mx-caption').textContent, /x = \(5, 0\)/);
+  assert.match(q('.mx-legend').textContent, /x = \(5, 0\)/);
 });

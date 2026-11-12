@@ -760,14 +760,14 @@
 
 .stats-layout {
   display: grid;
-  grid-template-columns: minmax(280px, 380px) minmax(0, 1fr);
+  grid-template-columns: minmax(260px, 340px) minmax(0, 1fr);
   height: 100%;
   min-height: 0;
 }
 
 .st-panel {
   min-height: 0;
-  padding: 12px;
+  padding: 14px;
   overflow-y: auto;
   border-right: 1px solid var(--border);
   background: var(--surface);
@@ -775,9 +775,9 @@
 
 .st-heading {
   margin: 12px 0 6px;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--text-muted);
 }
@@ -801,6 +801,7 @@
 .st-name {
   min-width: 0;
   flex: 1;
+  font-weight: 600;
 }
 
 .st-area {
@@ -810,18 +811,11 @@
   resize: vertical;
 }
 
-.st-data-actions,
-.st-modes {
+.st-data-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
   margin-top: 8px;
-}
-
-.st-controls {
-  display: grid;
-  gap: 8px;
-  margin-top: 10px;
 }
 
 .st-hint,
@@ -831,20 +825,69 @@
   font-size: 13px;
 }
 
+/* ------------------------------------------------------------------- stage */
+
 .st-stage {
   position: relative;
   display: flex;
   min-width: 0;
   min-height: 0;
   flex-direction: column;
+  gap: 12px;
+  padding: 14px;
   overflow-y: auto;
+}
+
+/* The mode tabs and the options for the chosen mode share one card at the top. */
+.st-options {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+}
+
+.st-modes {
+  display: inline-flex;
+  align-self: flex-start;
+  flex-wrap: wrap;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+
+.st-modes .btn {
+  min-height: 30px;
+  border-color: transparent;
+  background: transparent;
+}
+
+.st-modes .btn[aria-pressed='true'] {
+  border-color: var(--border-strong);
+  background: var(--surface);
+  font-weight: 600;
+}
+
+.st-controls {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  align-items: end;
+  gap: 10px 12px;
+}
+
+.st-controls .st-hint {
+  grid-column: 1 / -1;
+  margin: 0;
 }
 
 .st-charts {
   min-width: 0;
   display: grid;
   gap: 8px;
-  padding: 12px 12px 0;
 }
 
 .st-canvas {
@@ -856,15 +899,91 @@
   width: 100%;
   height: 300px;
   border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border-radius: var(--radius-lg);
 }
 
 .st-canvas-small {
   height: 180px;
 }
 
+/* ----------------------------------------------------------------- results */
+
 .st-results {
-  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 0 0 12px;
+}
+
+.st-results > * {
+  max-width: 100%;
+  margin: 0;
+}
+
+.st-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 10px;
+  align-self: stretch;
+}
+
+.st-tile {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.st-tile-label {
+  color: var(--text-muted);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.st-tile-value {
+  overflow-wrap: anywhere;
+  font-size: 20px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.25;
+}
+
+.st-callout {
+  align-self: stretch;
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  line-height: 1.5;
+}
+
+.st-callout.is-significant {
+  border-left-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.st-hyp {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 20px;
+  font-family: var(--font-display);
+  font-size: 16px;
+}
+
+.st-more {
+  align-self: stretch;
+}
+
+.st-more summary {
+  cursor: pointer;
+  color: var(--text-muted);
 }
 
 .st-table {
@@ -894,7 +1013,7 @@
   }
 
   .st-panel {
-    max-height: 50%;
+    max-height: 45%;
     border-right: 0;
     border-bottom: 1px solid var(--border);
   }

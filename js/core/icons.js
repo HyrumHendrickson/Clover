@@ -36,6 +36,7 @@ const STROKE = {
   'tool-latex': 'M6 3h9l4 4v14H6zM15 3v4h4M9 12h7M9 15h7M9 18h4',
   'tool-maxima': 'M5 6h14M12 6v13M8 19h8M16 10l3 3-3 3',
   'tool-python': 'M8 8l-4 4 4 4M16 8l4 4-4 4M13.5 5.5l-3 13',
+  'tool-programming': 'M4 5h16a1 1 0 011 1v12a1 1 0 01-1 1H4a1 1 0 01-1-1V6a1 1 0 011-1zM7 10l3 2-3 2M12 15h5',
 };
 
 const FILLED = {

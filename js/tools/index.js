@@ -8,6 +8,7 @@ import latex from './latex.js';
 import matrix from './matrix.js';
 import maxima from './maxima.js';
 import notebook from './notebook.js';
+import programming from './programming.js';
 import python from './python.js';
 import { registerTools } from './registry.js';
 import stats from './stats.js';
@@ -28,6 +29,7 @@ export const TOOL_LIST = [
   latex,
   maxima,
   python,
+  programming,
 ];
 
 /** Tools keyed by type, as stored in saved workspaces. */

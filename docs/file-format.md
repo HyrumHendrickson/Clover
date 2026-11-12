@@ -7,7 +7,7 @@ Files use the `.clover` extension and are UTF-8 JSON. Importers accept `.clover`
 ```json
 {
   "format": "clover",
-  "version": 4,
+  "version": 6,
   "kind": "workspace",
   "exportedAt": "2026-01-01T12:00:00.000Z",
   "workspace": {
@@ -22,7 +22,7 @@ Files use the `.clover` extension and are UTF-8 JSON. Importers accept `.clover`
 ```json
 {
   "format": "clover",
-  "version": 4,
+  "version": 6,
   "kind": "tab",
   "exportedAt": "2026-01-01T12:00:00.000Z",
   "tab": { "type": "vector", "title": "Saddle", "state": { "p": "x", "q": "-y" } }
@@ -68,6 +68,10 @@ There are at most 60 rows. The syntax is described in [graphing.md](graphing.md)
 
 `lines` holds up to 40 entries. A matrix line is `{ id, kind: "matrix", name, cells }`, where `cells` is rows of entry text (at most 10 by 10, 24 characters each). A calculation is `{ id, kind: "expr", text }`. Lines are evaluated in order, and later lines can use earlier names. Files from before version 3, which stored `mode`, `m`, `n`, `p`, `A`, `B`, and `x`, are converted to the equivalent lines.
 
+### Programming
+
+`{ language, sources, stdin }`. `language` is `python`, `rust`, `c`, `cpp`, or `java`. `sources` holds one program per language (up to 50,000 characters each; a missing one is replaced by the example), and `stdin` is the text given to the program (up to 10,000 characters). Output is never saved. Code in an imported file is sent to the run service only when a person presses Run. See [programming.md](programming.md).
+
 ### Notebook embeds
 
 An `embed` cell is `{ id, type: "embed", tool, height, state }`. `tool` is any other tool type except `notebook`, `state` is that tool's own state and is normalized by it, and `height` is clamped to 220 to 1000 pixels. A notebook can hold at most 8 embeds.
@@ -85,6 +89,7 @@ Each row is `{ id, text }`, one line of the geometry language: a comment (`#`), 
 | 3       | `matrix` holds named lines (older state is converted). `embed` notebook cells and the `geometry` tool are added.                           |
 | 4       | Graph rows gain `folder` and `style`, and `folder` and `table` rows are added. The `stats` tool is added. Older files open unchanged.      |
 | 5       | The `fractals`, `automata`, `latex`, and `maxima` tools are added. Notebooks gain `code` and `pycanvas` cells. Older files open unchanged. |
+| 6       | The `programming` tool is added. Older files open unchanged.                                                                               |
 
 Notebook `code` and `pycanvas` cells are `{ id, type, code }`. Their output is never saved. Python code in an imported file runs only when a person presses Run, Play, Step, or Compile.
 

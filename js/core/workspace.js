@@ -15,10 +15,11 @@
  *   4  graph rows gain folders, styles, and tables; the "stats" tool is new.
  *   5  the "fractals", "automata", "latex", and "maxima" tools are new, and the notebook gains "code" and
  *      "pycanvas" cells. Older files open unchanged.
+ *   6  the "programming" tool is new. Older files open unchanged.
  */
 
 export const FORMAT = 'clover';
-export const VERSION = 5;
+export const VERSION = 6;
 export const MAX_TABS = 24;
 export const MAX_IMPORT_BYTES = 8 * 1024 * 1024;
 export const MAX_TITLE = 60;

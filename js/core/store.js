@@ -23,9 +23,10 @@ function safeSet(key, value) {
 }
 
 export const store = {
-  /** @returns {any|null} parsed saved workspace, or null */
-  loadWorkspace() {
-    const text = safeGet(WORKSPACE_KEY);
+  /** @param {string} [key] storage key; embedded frames use their own so they never touch the full site's workspace
+   * @returns {any|null} parsed saved workspace, or null */
+  loadWorkspace(key = WORKSPACE_KEY) {
+    const text = safeGet(key);
     if (!text) return null;
     try {
       return JSON.parse(text);
@@ -35,8 +36,8 @@ export const store = {
   },
 
   /** @returns {boolean} false if the browser refused the write */
-  saveWorkspace(workspace) {
-    return safeSet(WORKSPACE_KEY, JSON.stringify(workspace));
+  saveWorkspace(workspace, key = WORKSPACE_KEY) {
+    return safeSet(key, JSON.stringify(workspace));
   },
 
   clearWorkspace() {

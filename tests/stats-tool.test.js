@@ -163,7 +163,9 @@ test('tests report a statistic, degrees of freedom, and a p-value', async () => 
   click(byText('Tests'));
   await settle();
   assert.equal(tab.state.mode, 'tests');
-  assert.equal(q('canvas.st-canvas').hidden, true, 'tests have no chart');
+  assert.equal(q('canvas.st-canvas').hidden, false, 'a test charts where its statistic falls');
+  assert.match(q('.st-hyp').textContent, /H₀: μ = 0/);
+  assert.match(q('.st-callout').textContent, /α = 0\.05/);
   assert.ok(cell('Statistic'));
   assert.equal(cell('Degrees of freedom'), '4');
   const kind = qa('select').find((s) => s.getAttribute('aria-label') === 'Test');

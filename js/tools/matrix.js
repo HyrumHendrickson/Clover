@@ -4,7 +4,7 @@ import { openMenu } from '../core/menu.js';
 import { createMathField } from '../core/mathfield.js';
 import { Eigen, evaluateLines, formatScalar, isMatrix, MAX_DIM } from '../lib/linalg.js';
 import { attachPanZoom } from '../lib/interact.js';
-import { draw2D, draw3D, describePlan, tipOf2 } from '../lib/linvizdraw.js';
+import { draw2D, draw3D, describePlan, legendFor, summarizePlan, tipOf2 } from '../lib/linvizdraw.js';
 import { fitRadius, planFor } from '../lib/linviz.js';
 import { typeset } from '../lib/graph/typeset.js';
 import { View, fitCanvas, themeColors } from '../lib/viewport.js';
@@ -84,6 +84,52 @@ const STARTER = () => [
   },
   { kind: 'expr', text: 'A+B' },
   { kind: 'expr', text: 'A*B' },
+];
+
+/** Ready-made products for the Examples menu: a matrix, and a vector for it to act on. */
+const EXAMPLES = [
+  {
+    label: 'Rotate by 90\u00b0',
+    cells: [
+      ['0', '-1'],
+      ['1', '0'],
+    ],
+  },
+  {
+    label: 'Rotate by 45\u00b0',
+    cells: [
+      ['sqrt(2)/2', '-sqrt(2)/2'],
+      ['sqrt(2)/2', 'sqrt(2)/2'],
+    ],
+  },
+  {
+    label: 'Stretch along x',
+    cells: [
+      ['2', '0'],
+      ['0', '1'],
+    ],
+  },
+  {
+    label: 'Shear',
+    cells: [
+      ['1', '1'],
+      ['0', '1'],
+    ],
+  },
+  {
+    label: 'Reflect over the x axis',
+    cells: [
+      ['1', '0'],
+      ['0', '-1'],
+    ],
+  },
+  {
+    label: 'Project onto the x axis',
+    cells: [
+      ['1', '0'],
+      ['0', '0'],
+    ],
+  },
 ];
 
 function normalize(raw) {
@@ -197,7 +243,8 @@ export default {
     let yaw = 0.6;
     let pitch = 0.45;
     let zoom3 = 1;
-    let plan = { kind: 'none', message: 'Click a line to see it drawn.' };
+    let detail = false;
+    let plan = { kind: 'none', message: 'Click a line to see it drawn, or try Examples.' };
     const view = new View({ cx: 0, cy: 0, radius: 5 }, 1, 1);
     const indexOf = (id) => state.lines.findIndex((l) => l.id === id);
 
@@ -210,7 +257,19 @@ export default {
       'aria-label': 'Click a line to see it drawn.',
     });
     const placeholder = h('p', { class: 'mx-viz-empty' });
-    const caption = h('p', { class: 'tool-note mx-caption', 'aria-live': 'polite' });
+    const caption = h('p', { class: 'mx-caption', 'aria-live': 'polite' });
+    const legend = h('ul', { class: 'mx-legend', 'aria-label': 'What the colours mean' });
+    const moreText = h('p', { class: 'mx-more-text' });
+    const more = h('details', { class: 'mx-more' }, h('summary', {}, 'More about this picture'), moreText);
+    const detailBox = h('input', {
+      type: 'checkbox',
+      onchange: () => {
+        detail = detailBox.checked;
+        drawViz();
+      },
+    });
+    const detailToggle = h('label', { class: 'check mx-detail' }, detailBox, h('span', {}, 'Show grid and details'));
+    const vizHead = h('div', { class: 'mx-viz-head' }, h('span', { class: 'mx-viz-title' }, 'Picture'), detailToggle);
     const slider = h('input', {
       class: 'mx-slider',
       type: 'range',
@@ -256,7 +315,7 @@ export default {
     const controls = h(
       'div',
       { class: 'mx-viz-controls' },
-      h('span', { class: 'field-label' }, 'Apply the matrix'),
+      h('span', { class: 'field-label' }, 'Apply'),
       slider,
       animate,
     );
@@ -264,10 +323,34 @@ export default {
 
     const selectedIndex = () => state.lines.findIndex((l) => l.id === selectedId);
 
+    /** Text that depends on the plan, not on how far the animation has run. */
+    function renderInfo() {
+      const none = plan.kind === 'none';
+      const full = describePlan(plan);
+      caption.textContent = none ? '' : summarizePlan(plan);
+      moreText.textContent = none ? '' : full;
+      more.hidden = none;
+      detailToggle.hidden = plan.kind !== 'apply';
+      legend.replaceChildren(
+        ...legendFor(plan).map((item) =>
+          h(
+            'li',
+            { class: `mx-key mx-key-${item.role}` },
+            h('span', { class: 'mx-swatch', 'aria-hidden': 'true' }),
+            item.text,
+          ),
+        ),
+      );
+      legend.hidden = legend.childNodes.length === 0;
+      canvas.setAttribute('aria-label', none ? plan.message : `Drawing. ${full}`);
+    }
+
     function refreshPlan({ refit = false } = {}) {
       const index = selectedIndex();
       plan =
-        index < 0 ? { kind: 'none', message: 'Click a line to see it drawn.' } : planFor(state.lines, result, index);
+        index < 0
+          ? { kind: 'none', message: 'Click a line to see it drawn, or try Examples.' }
+          : planFor(state.lines, result, index);
       if (refit && plan.kind !== 'none') {
         const reached =
           plan.kind === 'apply' ? [plan.A.map((row) => row.reduce((sum, a, k) => sum + a * plan.x[k], 0))] : [];
@@ -280,6 +363,7 @@ export default {
         view.set({ cx: 0, cy: 0, radius: fitRadius(points) });
         zoom3 = 1;
       }
+      renderInfo();
       drawViz();
     }
 
@@ -288,9 +372,6 @@ export default {
       controls.hidden = !matrixPlan;
       placeholder.hidden = plan.kind !== 'none';
       placeholder.textContent = plan.kind === 'none' ? plan.message : '';
-      const text = describePlan(plan);
-      caption.textContent = plan.kind === 'none' ? '' : text;
-      canvas.setAttribute('aria-label', plan.kind === 'none' ? plan.message : `Drawing. ${text}`);
       if (!active) return;
       const a = fitCanvas(canvas);
       view.resize(a.width, a.height);
@@ -300,9 +381,14 @@ export default {
       if (plan.kind === 'none') return;
       if (plan.dim === 3) {
         const points = plan.kind === 'vector' ? [plan.v] : [plan.A.flat(), ...(plan.x ? [plan.x] : [])];
-        draw3D(a.ctx, a.width, a.height, colors, plan, t, { yaw, pitch, radius: fitRadius(points) / zoom3 });
+        draw3D(a.ctx, a.width, a.height, colors, plan, t, {
+          yaw,
+          pitch,
+          radius: fitRadius(points) / zoom3,
+          detail: plan.kind !== 'apply' || detail,
+        });
       } else {
-        draw2D(a.ctx, view, colors, plan, t);
+        draw2D(a.ctx, view, colors, plan, t, { detail: plan.kind !== 'apply' || detail });
       }
     }
 
@@ -493,6 +579,26 @@ export default {
     }
 
     const matrixLine = (name, rows, cols) => ({ kind: 'matrix', name, cells: zeroCells(rows, cols) });
+
+    /** Add a matrix, a vector, and their product to the end of the sheet, and show the product. */
+    function addExample(example) {
+      if (state.lines.length + 3 > MAX_LINES) {
+        ctx.notify(`A sheet can have up to ${MAX_LINES} lines. Delete a few to add an example.`);
+        return;
+      }
+      const matrixName = nextName('ABCDEFGHIJKLMNOPQRSTUVWXYZ');
+      const first = insertLine(
+        { kind: 'matrix', name: matrixName, cells: example.cells.map((row) => [...row]) },
+        null,
+        {
+          focus: false,
+        },
+      );
+      const vectorName = nextName('uvwxyz');
+      insertLine({ kind: 'matrix', name: vectorName, cells: [['2'], ['1']] }, null, { focus: false });
+      const product = insertLine({ kind: 'expr', text: `${matrixName}*${vectorName}` }, null, { focus: false });
+      if (first && product) select(product.id);
+    }
 
     function resize(line, rows, cols) {
       const r = clamp(rows, 1, MAX_DIM);
@@ -783,12 +889,37 @@ export default {
         add('Matrix', () => insertLine(matrixLine(nextName('ABCDEFGHIJKLMNOPQRSTUVWXYZ'), 2, 2))),
         add('Vector', () => insertLine(matrixLine(nextName('uvwxyz'), 3, 1))),
         add('Calculation', () => insertLine({ kind: 'expr', text: '' })),
+        h('span', { class: 'tool-bar-spacer' }),
+        h(
+          'button',
+          {
+            class: 'btn btn-quiet',
+            type: 'button',
+            'aria-haspopup': 'menu',
+            onclick: (event) =>
+              openMenu(
+                event.currentTarget,
+                EXAMPLES.map((example) => ({ label: example.label, onSelect: () => addExample(example) })),
+                { align: 'end' },
+              ),
+          },
+          'Examples',
+        ),
       ),
       h(
         'div',
         { class: 'tool-body mx-body' },
         h('div', { class: 'mx-main' }, list, help),
-        h('aside', { class: 'mx-viz', 'aria-label': 'Picture of the selected line' }, stage, caption, controls),
+        h(
+          'aside',
+          { class: 'mx-viz', 'aria-label': 'Picture of the selected line' },
+          vizHead,
+          stage,
+          controls,
+          legend,
+          caption,
+          more,
+        ),
       ),
     );
 

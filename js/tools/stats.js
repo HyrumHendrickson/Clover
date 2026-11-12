@@ -9,6 +9,8 @@ import {
   chiSqIndependence,
   inverseCdf,
   mean,
+  meanInterval,
+  shape,
   stdev,
   suggestedBinWidth,
   summarize,
@@ -26,7 +28,9 @@ import {
   histogramSpec,
   residualSpec,
   scatterSpec,
+  testSpec,
 } from '../lib/statchart.js';
+import { conclusion, hypotheses, testDistribution } from '../lib/statsreport.js';
 import { fitCanvas, themeColors } from '../lib/viewport.js';
 
 const MAX_COLUMNS = 4;
@@ -122,6 +126,7 @@ const normalize = (raw) => {
       y: Math.min(index(g.y ?? 1), cols.length - 1),
       model: typeof g.model === 'string' && Object.hasOwn(MODELS, g.model) ? g.model : 'linear',
       residuals: g.residuals === true,
+      predict: text(g.predict, MAX_FIELD),
     },
     dist: {
       kind,
@@ -138,6 +143,7 @@ const normalize = (raw) => {
       mu0: text(t.mu0 ?? '0', MAX_FIELD),
       sigma: text(t.sigma ?? '1', MAX_FIELD),
       level: text(t.level ?? '0.95', MAX_FIELD),
+      alpha: text(typeof t.alpha === 'string' ? t.alpha : '0.05', MAX_FIELD),
       p0: text(t.p0 ?? '0.5', MAX_FIELD),
       x1: text(t.x1 ?? '', MAX_FIELD),
       n1: text(t.n1 ?? '', MAX_FIELD),
@@ -532,6 +538,7 @@ export default {
           },
         });
         parts.push(h('label', { class: 'check' }, box, h('span', {}, 'Plot residuals')));
+        parts.push(textInput('Predict y at x', state.regress, 'predict', { placeholder: 'a value of x' }));
       } else if (state.mode === 'dist') {
         const d = state.dist;
         const kindSelect = h(
@@ -559,12 +566,13 @@ export default {
         parts.push(choice('Test', t, 'kind', TESTS, { rebuild: true }));
         const tail = choice('Alternative', t, 'tail', TAILS);
         const level = textInput('Confidence level', t, 'level');
+        const alpha = textInput('Significance level \u03b1', t, 'alpha');
         if (t.kind === 't1' || t.kind === 'z1') {
           parts.push(columnChoice('Data column', t, 'col'), textInput('Hypothesised mean', t, 'mu0'));
           if (t.kind === 'z1') parts.push(textInput('Population standard deviation', t, 'sigma'));
-          parts.push(tail, level);
+          parts.push(tail, level, alpha);
         } else if (t.kind === 't2') {
-          parts.push(columnChoice('Sample 1', t, 'col'), columnChoice('Sample 2', t, 'col2'), tail, level);
+          parts.push(columnChoice('Sample 1', t, 'col'), columnChoice('Sample 2', t, 'col2'), tail, level, alpha);
         } else if (t.kind === 'prop1') {
           parts.push(
             textInput('Successes', t, 'x1'),
@@ -572,6 +580,7 @@ export default {
             textInput('Hypothesised proportion', t, 'p0'),
             tail,
             level,
+            alpha,
           );
         } else if (t.kind === 'prop2') {
           parts.push(
@@ -581,11 +590,17 @@ export default {
             textInput('Size, sample 2', t, 'n2'),
             tail,
             level,
+            alpha,
           );
         } else if (t.kind === 'gof') {
-          parts.push(columnChoice('Observed counts', t, 'col'), columnChoice('Expected shares (optional)', t, 'col2'));
+          parts.push(
+            columnChoice('Observed counts', t, 'col'),
+            columnChoice('Expected shares (optional)', t, 'col2'),
+            alpha,
+          );
         } else {
           parts.push(
+            alpha,
             h('p', { class: 'st-hint' }, 'Each column is a column of the table of counts; each row is a row.'),
           );
         }
@@ -606,6 +621,22 @@ export default {
         ),
       );
     const note = (message) => h('p', { class: 'st-note', role: 'status' }, message);
+    /** Headline numbers, large, above the detail. Each item is [label, value]. */
+    const tiles = (items) =>
+      h(
+        'div',
+        { class: 'st-tiles' },
+        items.map(([label, value]) =>
+          h(
+            'div',
+            { class: 'st-tile' },
+            h('span', { class: 'st-tile-label' }, label),
+            h('span', { class: 'st-tile-value' }, value),
+          ),
+        ),
+      );
+    const callout = (message, significant = false) =>
+      h('p', { class: `st-callout${significant ? ' is-significant' : ''}`, role: 'status' }, message);
 
     function describe() {
       const col = state.cols[state.describe.col];
@@ -624,26 +655,51 @@ export default {
               : `${skipped} entries were not numbers and were skipped.`,
           ),
         );
+      const interval = meanInterval(values, 0.95);
+      const { skewness, kurtosis } = shape(values);
       out.push(
-        table([
+        tiles([
           ['Count', show(summary.n)],
           ['Mean', show(summary.mean)],
           ['Median', show(summary.median)],
-          ['Mode', summary.modes.length ? summary.modes.map(show).join(', ') : 'none'],
-          ['Standard deviation (sample)', show(summary.sd)],
-          ['Standard deviation (population)', show(summary.sdp)],
-          ['Variance (sample)', show(summary.variance)],
-          ['Minimum', show(summary.min)],
-          ['First quartile', show(summary.q1)],
-          ['Third quartile', show(summary.q3)],
-          ['Maximum', show(summary.max)],
-          ['Range', show(summary.range)],
-          ['Interquartile range', show(summary.iqr)],
-          ['Mean absolute deviation', show(summary.mad)],
-          ['Sum', show(summary.sum)],
-          ['Outliers', summary.outliers.length ? summary.outliers.map(show).join(', ') : 'none'],
+          ['Standard deviation', show(summary.sd)],
         ]),
-        h('p', { class: 'st-hint' }, 'Quartiles use linear interpolation between sorted values.'),
+      );
+      if (interval) {
+        out.push(
+          callout(
+            `95% confidence interval for the mean: ${show(interval.lower)} to ${show(interval.upper)} (t, ${interval.dof} degrees of freedom).`,
+          ),
+        );
+      }
+      out.push(
+        h(
+          'details',
+          { class: 'st-more' },
+          h('summary', {}, 'All statistics'),
+          table([
+            ['Count', show(summary.n)],
+            ['Mean', show(summary.mean)],
+            ['Median', show(summary.median)],
+            ['Mode', summary.modes.length ? summary.modes.map(show).join(', ') : 'none'],
+            ['Standard deviation (sample)', show(summary.sd)],
+            ['Standard deviation (population)', show(summary.sdp)],
+            ['Variance (sample)', show(summary.variance)],
+            ['Standard error of the mean', interval ? show(interval.stderr) : 'needs 2 values'],
+            ['Minimum', show(summary.min)],
+            ['First quartile', show(summary.q1)],
+            ['Third quartile', show(summary.q3)],
+            ['Maximum', show(summary.max)],
+            ['Range', show(summary.range)],
+            ['Interquartile range', show(summary.iqr)],
+            ['Mean absolute deviation', show(summary.mad)],
+            ['Sum', show(summary.sum)],
+            ['Skewness', skewness === null ? 'needs 3 values with spread' : show(skewness)],
+            ['Excess kurtosis', kurtosis === null ? 'needs 4 values with spread' : show(kurtosis)],
+            ['Outliers', summary.outliers.length ? summary.outliers.map(show).join(', ') : 'none'],
+          ]),
+          h('p', { class: 'st-hint' }, 'Quartiles use linear interpolation between sorted values.'),
+        ),
       );
       const typed = number(state.describe.bin);
       const width = typed > 0 ? typed : suggestedBinWidth(values);
@@ -684,9 +740,29 @@ export default {
         ['R\u00b2', show(fit.r2)],
       ];
       if (fit.r !== null) rows.push(['Correlation r', show(fit.r)]);
+      out.push(
+        tiles([
+          ['Fitted model', equationText(fit.kind, fit.params)],
+          ['R\u00b2', show(fit.r2)],
+          ...(fit.r !== null ? [['Correlation r', show(fit.r)]] : []),
+        ]),
+      );
       out.push(table(rows));
       if (fit.r2 < 0)
         out.push(note('A negative R\u00b2 means this model fits worse than a flat line through the mean.'));
+      if (state.regress.predict.trim() !== '') {
+        const at = number(state.regress.predict);
+        if (!Number.isFinite(at)) out.push(note('Enter a number to predict at.'));
+        else {
+          const y = fit.predict(at);
+          const outside = at < Math.min(...xs) || at > Math.max(...xs);
+          out.push(
+            callout(
+              `At x = ${show(at)} the model predicts y = ${Number.isFinite(y) ? show(y) : 'undefined'}.${outside ? ' That is outside the data, so treat it with care.' : ''}`,
+            ),
+          );
+        }
+      }
       out.push(
         h(
           'button',
@@ -770,6 +846,16 @@ export default {
         [`p-value (${TAILS.find(([k]) => k === t.tail)[1].toLowerCase()})`, pText(r, t.tail)],
         [`${Math.round(conf * 100)}% confidence interval`, `${show(r.ci.lower)} to ${show(r.ci.upper)}`],
       ];
+      const alpha = number(t.alpha);
+      const pOf = (r) => (t.tail === 'left' ? r.left : t.tail === 'right' ? r.right : r.two);
+      /** Put the hypotheses first, say what the p-value means, and chart where the statistic falls. */
+      const finish = (statistic, dof, p) => {
+        const hyp = hypotheses(t.kind, t);
+        out.unshift(h('div', { class: 'st-hyp' }, h('span', {}, hyp.null), h('span', {}, hyp.alt)));
+        const verdict = conclusion(p, alpha);
+        if (verdict) out.push(callout(verdict.text, verdict.reject));
+        return { out, spec: testSpec(testDistribution(t.kind, { dof }), statistic, t.tail) };
+      };
       let result = null;
       if (t.kind === 't1' || t.kind === 'z1') {
         const { values } = columnValues(state.cols[t.col]);
@@ -829,7 +915,7 @@ export default {
             ['Expected counts', r.expected.map(show).join(', ')],
           ]),
         );
-        return { out, spec: null };
+        return finish(r.score, r.dof, r.p);
       } else {
         const columns = state.cols.map((c) => c.cells.map((v) => number(v)));
         const length = Math.max(...columns.map((c) => c.length));
@@ -847,9 +933,32 @@ export default {
             ['p-value', show(r.p)],
           ]),
         );
-        return { out, spec: null };
+        return finish(r.score, r.dof, r.p);
       }
-      return { out, spec: null };
+      return finish(result.score, result.dof, pOf(result));
+    }
+
+    /** The numbers in the tables below, as plain text for a report or a message. */
+    function copyButton() {
+      return h(
+        'button',
+        {
+          class: 'btn btn-small st-copy',
+          type: 'button',
+          onclick: async () => {
+            const lines = [...results.querySelectorAll('.st-table tr')].map(
+              (row) => `${row.querySelector('th')?.textContent}: ${row.querySelector('td')?.textContent}`,
+            );
+            try {
+              await navigator.clipboard.writeText(lines.join('\n'));
+              ctx.notify('Copied the results as text.');
+            } catch {
+              ctx.notify('Could not copy. Select the table and copy it by hand.', 'error');
+            }
+          },
+        },
+        'Copy results as text',
+      );
     }
 
     /* ------------------------------------------------------------- draw */
@@ -872,12 +981,13 @@ export default {
       const compute = { describe, regress, dist: distribution, tests }[state.mode];
       const { out, spec, fit, xs } = compute();
       results.replaceChildren(...out);
+      if (results.querySelector('.st-table')) results.append(copyButton());
       lastSpec = spec;
       lastResidual = null;
       const wantResiduals = state.mode === 'regress' && state.regress.residuals && fit;
       second.hidden = !wantResiduals;
       if (wantResiduals) lastResidual = residualSpec(xs, fit.residuals);
-      main.hidden = state.mode === 'tests';
+      main.hidden = state.mode === 'tests' && !spec;
       if (active) paint();
     }
     const refreshLater = debounce(refresh, 200);
@@ -889,14 +999,12 @@ export default {
 
     const panel = h(
       'aside',
-      { class: 'st-panel', 'aria-label': 'Data and options' },
+      { class: 'st-panel', 'aria-label': 'Data' },
       h('h2', { class: 'st-heading' }, 'Data'),
       dataBox,
-      h('h2', { class: 'st-heading' }, 'Options'),
-      modeBar,
-      controls,
     );
-    const stage = h('div', { class: 'st-stage' }, h('div', { class: 'st-charts' }, main, second), results);
+    const options = h('section', { class: 'st-options', 'aria-label': 'What to do with the data' }, modeBar, controls);
+    const stage = h('div', { class: 'st-stage' }, options, h('div', { class: 'st-charts' }, main, second), results);
     root.classList.add('tool', 'stats-tool');
     root.append(h('div', { class: 'stats-layout' }, panel, stage));
 

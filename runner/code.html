@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <!--
+      Runs the Programming tab's requests. Opaque origin (the parent uses sandbox="allow-scripts" without
+      allow-same-origin), so nothing here can read Clover's saved workspace. The program itself is compiled and run
+      by a remote Judge0 service, which is why connect-src allows https. No inline script, no eval, no frames.
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; connect-src https: http://localhost:* http://127.0.0.1:*; form-action 'none'; base-uri 'none'"
+    />
+    <meta name="robots" content="noindex" />
+    <title>Clover code runner</title>
+  </head>
+  <body>
+    <script type="module" src="code.js"></script>
+  </body>
+</html>

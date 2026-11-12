@@ -6,6 +6,10 @@ All notable changes are documented here. The format follows [Keep a Changelog](h
 
 ### Added
 
+- A Programming tab that runs Python, Rust, C, C++, and Java, with standard input and a highlighted editor. Code runs on a Judge0 service; see docs/programming.md.
+- Embedding: `?embed=1` shows Clover without page chrome, `&tool=<type>` shows one tool, `&tools=a,b` offers a subset, and `embed.js` adds a `<clover-embed>` element. The Export menu has an "Embed on a website" dialog. See docs/embedding.md.
+- Linear algebra: an Examples menu, and a legend and one-line summary under the picture.
+- Statistics: headline tiles, a confidence interval for the mean, skewness and kurtosis, prediction from a regression, hypotheses and a plain-language verdict for each test, a chart of the test statistic with the p-value shaded, and a button to copy results as text.
 - LaTeX tab: create folders, and put new files and uploads into the selected folder.
 - 3D graphing: hover a surface to see the coordinates of the point under the pointer.
 - Graphing: expression rows are numbered.
@@ -13,6 +17,9 @@ All notable changes are documented here. The format follows [Keep a Changelog](h
 
 ### Changed
 
+- Linear algebra: the page is restyled, and the picture of `A*x` shows only the two vectors until "Show grid and details" is ticked.
+- Statistics: the mode tabs and options moved above the results.
+- The file format is version 6 (adds the `programming` tool). Older files open unchanged.
 - Notebook and Geometry tabs open empty instead of with example content.
 - The two-stars orbit example now animates while it runs.
 

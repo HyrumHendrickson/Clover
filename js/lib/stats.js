@@ -683,3 +683,39 @@ export function chiSqIndependence(table) {
   const dof = (rows - 1) * (cols - 1);
   return { name: 'Chi-square test of independence', score, dof, expected, p: 1 - chiSqCdf(score, dof) };
 }
+
+/* ------------------------------------------------------------ shape and intervals */
+
+/**
+ * Skewness (adjusted Fisher-Pearson, G1) and excess kurtosis (G2) of a sample, the same definitions SciPy uses with
+ * `bias=False`. Each is null when the sample is too small (3 values for skewness, 4 for kurtosis) or has no spread.
+ */
+export function shape(raw) {
+  const data = finite(raw);
+  const n = data.length;
+  const s = stdev(data);
+  if (n < 3 || !(s > 0)) return { skewness: null, kurtosis: null };
+  const m = mean(data);
+  const z = data.map((v) => (v - m) / s);
+  const skewness = (n / ((n - 1) * (n - 2))) * sumOf(z.map((v) => v ** 3));
+  const kurtosis =
+    n < 4
+      ? null
+      : ((n * (n + 1)) / ((n - 1) * (n - 2) * (n - 3))) * sumOf(z.map((v) => v ** 4)) -
+        (3 * (n - 1) ** 2) / ((n - 2) * (n - 3));
+  return { skewness, kurtosis };
+}
+
+/**
+ * A t confidence interval for the mean of a sample.
+ * @returns {{ mean: number, stderr: number, lower: number, upper: number, dof: number } | null} null for fewer than two values
+ */
+export function meanInterval(raw, level = 0.95) {
+  const data = finite(raw);
+  if (data.length < 2 || !(level > 0 && level < 1)) return null;
+  const m = mean(data);
+  const dof = data.length - 1;
+  const stderr = stdev(data) / Math.sqrt(data.length);
+  const crit = tInv(1 - (1 - level) / 2, dof);
+  return { mean: m, stderr, lower: m - crit * stderr, upper: m + crit * stderr, dof };
+}

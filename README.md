@@ -21,6 +21,7 @@ https://hyrumhendrickson.github.io/Clover/
 | **Cellular automata** | Rules written in Python with any number of colours. Click to paint; play, pause, step, and step back. Includes Life and a forest fire.                                                        |
 | **LaTeX**             | Several files and pictures, source beside the PDF. TeX Live runs in WebAssembly in a sandboxed frame.                                                                                         |
 | **Symbolic algebra**  | Maxima syntax: expand, differentiate, integrate, solve. A built-in engine, not the full Maxima program.                                                                                       |
+| **Programming**       | Write and run Python, Rust, C, C++, or Java with standard input and output. Runs on a remote Judge0 service.                                                                                  |
 | **Python turtle**     | Python with the `turtle` module, run in the browser. Presets for Koch, Sierpinski, dragon, tree, Hilbert, Lévy, Gosper, and Barnsley fern.                                                    |
 
 ![Complex functions](docs/images/complex.png)
@@ -28,9 +29,22 @@ https://hyrumhendrickson.github.io/Clover/
 
 ## Saving and sharing
 
-- Work is saved automatically in your browser's local storage. Nothing is sent to a server.
+- Work is saved automatically in your browser's local storage. Nothing is sent to a server, with one exception: pressing Run in the Programming tab sends that program and its input to a code execution service (see [docs/programming.md](docs/programming.md)).
 - **Export** writes the whole workspace or one tab to a `.clover` file. A recipient opens it with **Import** or by dropping it on the page and sees what you saw. See [docs/file-format.md](docs/file-format.md).
 - Graphs are saved as their expressions, so a shared file reproduces the whole graph. Files from version 1 that held a Desmos link open as an empty graph with the link kept as a note.
+
+## Embedding
+
+Show all of Clover, or one tool, on another website with an iframe or the `<clover-embed>` element. See [docs/embedding.md](docs/embedding.md).
+
+```html
+<iframe
+  src="https://hyrumhendrickson.github.io/Clover/?embed=1&tool=matrix"
+  width="100%"
+  height="600"
+  style="border: 0"
+></iframe>
+```
 
 ## Run locally
 

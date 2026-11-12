@@ -37,7 +37,11 @@ function dot(ctx, x, y, color, r = 5) {
 export const tipOf2 = (view, plan) =>
   plan.kind === 'vector' && plan.dim === 2 ? view.toScreen(plan.v[0], plan.v[1]) : null;
 
-export function draw2D(ctx, view, colors, plan, t) {
+/**
+ * @param {{ detail?: boolean }} [options] `detail` adds, for a product like A*x, the grid, unit square, eigen-directions,
+ *   and the turn arc that A applies. Without it the picture is the two vectors and nothing else.
+ */
+export function draw2D(ctx, view, colors, plan, t, { detail = true } = {}) {
   drawGrid(ctx, view, colors, { halo: colors.bg });
   const to = (p) => view.toScreen(p[0], p[1]);
   const [ox, oy] = to([0, 0]);
@@ -61,6 +65,11 @@ export function draw2D(ctx, view, colors, plan, t) {
 
   const M = interpolate(plan.A, t);
   const image = (p) => to(applyMatrix(M, p));
+
+  if (plan.kind === 'apply' && !detail) {
+    drawApplied(ctx, to, colors, plan, M, t, { ox, oy });
+    return;
+  }
 
   // The unit square, and the grid it came from and became.
   const reach = Math.min(40, Math.ceil(view.radius * Math.max(1, view.width / view.height)) + 2);
@@ -161,6 +170,23 @@ export function draw2D(ctx, view, colors, plan, t) {
   }
 }
 
+/** The plain picture of a product like A*x: x, and where A puts it. */
+function drawApplied(ctx, to, colors, plan, M, t, { ox, oy }) {
+  const x = plan.x;
+  const moved = applyMatrix(M, x);
+  const [xx, xy] = to(x);
+  const [mx, my] = to(moved);
+  drawArrow(ctx, ox, oy, xx, xy, { color: colors.a, width: 2.5, head: 10, dash: [7, 4] });
+  drawArrow(ctx, ox, oy, mx, my, { color: colors.accent, width: 3.5, head: 12 });
+  dot(ctx, xx, xy, colors.a, 4);
+  dot(ctx, mx, my, colors.accent, 5);
+  // Short names only: the numbers are in the legend, where they cannot overlap the arrows. The two labels sit on
+  // opposite sides so they stay apart even when the arrows end close together.
+  const xAbove = xy <= my;
+  label(ctx, 'x', xx + 10, xy + (xAbove ? -12 : 12), colors);
+  label(ctx, t >= 0.999 ? 'A x' : 'M x', mx + 10, my + (xAbove ? 12 : -12), colors);
+}
+
 /** Describe a plan in words: used under the picture and as its text alternative. */
 export function describePlan(plan) {
   if (plan.kind === 'none') return plan.message;
@@ -202,7 +228,7 @@ const det3 = (A) =>
   A[0][1] * (A[1][0] * A[2][2] - A[1][2] * A[2][0]) +
   A[0][2] * (A[1][0] * A[2][1] - A[1][1] * A[2][0]);
 
-export function draw3D(ctx, width, height, colors, plan, t, { yaw, pitch, radius }) {
+export function draw3D(ctx, width, height, colors, plan, t, { yaw, pitch, radius, detail = true }) {
   const scale = Math.min(width, height) / (2 * radius);
   const to = (p) => {
     const [x, y] = project3(p, yaw, pitch);
@@ -255,6 +281,16 @@ export function draw3D(ctx, width, height, colors, plan, t, { yaw, pitch, radius
   }
 
   const M = interpolate(plan.A, t);
+  if (plan.kind === 'apply' && !detail) {
+    const moved = applyMatrix(M, plan.x);
+    arrow(plan.x, colors.a, 2.5);
+    arrow(moved, colors.accent, 3.5);
+    const [xx, xy] = to(plan.x);
+    const [mx, my] = to(moved);
+    label(ctx, 'x', xx + 10, xy - 10, colors);
+    label(ctx, t >= 0.999 ? 'A x' : 'M x', mx + 10, my + 12, colors);
+    return 0;
+  }
   const cube = [];
   for (let i = 0; i < 8; i += 1) cube.push(applyMatrix(M, [i & 1, (i >> 1) & 1, (i >> 2) & 1]));
   for (let i = 0; i < 8; i += 1) {
@@ -284,4 +320,47 @@ export function draw3D(ctx, width, height, colors, plan, t, { yaw, pitch, radius
     label(ctx, `${t >= 0.999 ? 'A x' : 'M x'} = ${vectorText(moved)}`, mx + 10, my + 12, colors);
   }
   return 0;
+}
+
+const turnText = (degrees, scale) =>
+  degrees === null
+    ? 'The zero vector stays where it is.'
+    : `Rotated ${fmt(Math.abs(degrees))}\u00b0 ${degrees < 0 ? 'clockwise' : degrees > 0 ? 'counterclockwise' : '(not at all)'} and scaled by ${fmt(scale)}.`;
+
+/**
+ * One short sentence about a plan, for under the picture. The long version, `describePlan`, goes in a "more"
+ * section and in the picture's text alternative.
+ */
+export function summarizePlan(plan) {
+  if (plan.kind === 'none') return plan.message;
+  if (plan.kind === 'vector') {
+    const length = fmt(Math.hypot(...plan.v));
+    if (plan.dim === 3) return `Length ${length}.`;
+    return `Length ${length}, pointing ${fmt((Math.atan2(plan.v[1], plan.v[0]) * 180) / Math.PI)}\u00b0 from the x axis.`;
+  }
+  if (plan.kind === 'transform') {
+    const d = plan.dim === 2 ? det2(plan.A) : det3(plan.A);
+    const what = plan.dim === 2 ? 'Areas' : 'Volumes';
+    return `${what} are multiplied by ${fmt(Math.abs(d))}${d < 0 ? ' and orientation flips' : ''}.`;
+  }
+  const y = applyMatrix(plan.A, plan.x);
+  if (plan.dim === 2) {
+    const { degrees, scale } = turnAndScale(plan.x, y);
+    return turnText(degrees, scale);
+  }
+  const lx = Math.hypot(...plan.x);
+  return lx < 1e-12 ? 'The zero vector stays where it is.' : `Its length is scaled by ${fmt(Math.hypot(...y) / lx)}.`;
+}
+
+/**
+ * What the colours in the picture mean, as `{ role, text }` pairs the page shows as a key.
+ * Roles are `x` (the input vector), `result` (what the matrix makes of it), and `vector` (a lone vector).
+ */
+export function legendFor(plan) {
+  if (plan.kind === 'vector') return [{ role: 'result', text: `${plan.label} = ${vectorText(plan.v)}` }];
+  if (plan.kind !== 'apply') return [];
+  return [
+    { role: 'x', text: `x = ${vectorText(plan.x)}` },
+    { role: 'result', text: `A x = ${vectorText(applyMatrix(plan.A, plan.x))}` },
+  ];
 }

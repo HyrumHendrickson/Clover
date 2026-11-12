@@ -1,30 +1,66 @@
-/* Matrices: named grids and calculations that use them. */
+/* Linear algebra: named matrices and calculations on the left, a picture of the selected line on the right. */
+
+.mx-bar {
+  align-items: center;
+}
 
 .mx-body {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(300px, 440px);
-  gap: 14px;
+  gap: 16px;
   overflow: hidden;
 }
 
 .mx-main {
   min-width: 0;
   min-height: 0;
+  padding: 2px 4px 16px 2px;
   overflow-y: auto;
 }
+
+/* ------------------------------------------------------------------ picture */
 
 .mx-viz {
   display: flex;
   min-width: 0;
   min-height: 0;
   flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+}
+
+.mx-viz-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   gap: 8px;
+  min-height: 28px;
+}
+
+.mx-viz-title {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.mx-viz .mx-detail {
+  min-height: 28px;
+  color: var(--text-muted);
+  font-size: 13px;
 }
 
 .mx-viz-stage {
   position: relative;
   flex: 1;
   min-height: 260px;
+  border-color: var(--border);
+  border-radius: var(--radius);
 }
 
 .mx-viz-empty {
@@ -49,93 +85,142 @@
 .mx-slider {
   flex: 1;
   min-width: 120px;
+  accent-color: var(--accent);
 }
 
-.mx-caption {
-  max-height: 7.5em;
-  overflow-y: auto;
-}
-
-.mx-line.is-selected {
-  border-color: var(--accent);
-}
-
-.mx-eigs {
+.mx-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
-.mx-eig {
-  padding: 2px 0;
+.mx-key {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font: 13px var(--font-mono);
   font-variant-numeric: tabular-nums;
 }
 
-.mx-eig-note {
+.mx-swatch {
+  width: 18px;
+  height: 0;
+  border-top: 3px solid var(--accent);
+  border-radius: 2px;
+}
+
+.mx-key-x .mx-swatch {
+  border-top: 3px dashed var(--viz-a);
+}
+
+.mx-caption {
+  margin: 0;
+  color: var(--text);
+  line-height: 1.5;
+}
+
+.mx-more {
   color: var(--text-muted);
+  font-size: 13px;
 }
 
-@media (max-width: 960px) {
-  .mx-body {
-    grid-template-columns: minmax(0, 1fr);
-    overflow-y: auto;
-  }
-
-  .mx-main {
-    overflow: visible;
-  }
-
-  .mx-viz-stage {
-    min-height: 320px;
-  }
+.mx-more summary {
+  cursor: pointer;
 }
+
+.mx-more-text {
+  max-height: 9em;
+  margin: 6px 0 0;
+  overflow-y: auto;
+  line-height: 1.55;
+}
+
+/* -------------------------------------------------------------------- lines */
 
 .mx-lines {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  width: min(820px, 100%);
+  gap: 10px;
+  width: min(780px, 100%);
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
 .mx-line {
+  position: relative;
   border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border-radius: var(--radius-lg);
   background: var(--surface);
+  transition:
+    border-color 120ms ease,
+    box-shadow 120ms ease;
+}
+
+.mx-line:hover {
+  border-color: var(--border-strong);
+}
+
+.mx-line.is-selected {
+  border-color: var(--accent);
+  box-shadow: inset 3px 0 0 var(--accent);
 }
 
 .mx-line:focus-within {
-  border-color: var(--border-strong);
-  box-shadow: 0 0 0 2px var(--selection);
+  border-color: var(--accent);
+  box-shadow:
+    inset 3px 0 0 var(--accent),
+    0 0 0 3px var(--selection);
 }
 
 .mx-head {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 10px 0;
+  padding: 10px 12px 0 16px;
 }
 
 .mx-name {
-  width: 84px;
-  font-style: italic;
+  width: 72px;
+  min-height: 32px;
+  border-color: transparent;
+  background: var(--surface-2);
+  font: italic 600 16px var(--font-display);
+  text-align: center;
+}
+
+.mx-name:focus {
+  border-color: var(--border-strong);
+  background: var(--surface);
 }
 
 .mx-eq {
   color: var(--text-muted);
+  font-size: 18px;
 }
 
 .mx-dims {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   color: var(--text-muted);
 }
 
 .mx-size {
-  width: 58px;
+  width: 50px;
+  min-height: 30px;
+  padding-inline: 6px;
+  border-color: transparent;
+  background: var(--surface-2);
+  text-align: center;
+}
+
+.mx-size:focus {
+  border-color: var(--border-strong);
+  background: var(--surface);
 }
 
 .mx-spacer {
@@ -148,9 +233,9 @@
   position: relative;
   display: inline-grid;
   grid-template-columns: repeat(var(--cols), minmax(0, auto));
-  gap: 6px 8px;
-  margin: 10px 18px 10px 18px;
-  padding: 6px 12px;
+  gap: 8px 10px;
+  margin: 12px 20px 14px 24px;
+  padding: 6px 14px;
 }
 
 .mx-grid::before,
@@ -161,47 +246,60 @@
   position: absolute;
   top: 0;
   bottom: 0;
-  width: 9px;
+  width: 10px;
   border: 0 solid var(--text);
 }
 
 .mx-grid::before,
 .mx-out::before {
   left: 0;
-  border-width: 1.5px 0 1.5px 1.5px;
+  border-width: 2px 0 2px 2px;
+  border-radius: 4px 0 0 4px;
 }
 
 .mx-grid::after,
 .mx-out::after {
   right: 0;
-  border-width: 1.5px 1.5px 1.5px 0;
+  border-width: 2px 2px 2px 0;
+  border-radius: 0 4px 4px 0;
 }
 
 .mx-cell {
-  width: 76px;
-  min-height: 34px;
+  width: 78px;
+  min-height: 36px;
+  border-color: transparent;
+  background: var(--surface-2);
+  font-size: 15px;
   text-align: center;
+}
+
+.mx-cell:focus {
+  border-color: var(--accent);
+  background: var(--surface);
 }
 
 .mx-entry {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-width: 44px;
-  min-height: 34px;
+  min-width: 48px;
+  min-height: 36px;
   padding: 0 4px;
+  font-variant-numeric: tabular-nums;
 }
 
 .mx-entry .mt {
-  font-size: 1.1em;
+  font-size: 1.15em;
 }
+
+/* ------------------------------------------------------------- calculations */
 
 .mx-expr-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 4px;
   align-items: start;
-  padding: 4px 6px 0 4px;
+  padding: 6px 8px 0 8px;
 }
 
 .mx-remove {
@@ -220,39 +318,68 @@
   }
 }
 
+/* The answer sits in its own tinted strip under the calculation. */
 .mx-result {
-  padding: 0 14px 8px;
+  margin-top: 4px;
+  padding: 6px 16px 8px 18px;
+  border-top: 1px solid var(--border);
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+  background: color-mix(in srgb, var(--accent-soft) 60%, var(--surface));
 }
 
 .mx-answer {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 8px;
   overflow-x: auto;
 }
 
 .mx-equals {
-  color: var(--text-muted);
-  font-size: 18px;
+  color: var(--accent);
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.mx-result .mx-out {
+  margin: 6px 14px 6px 10px;
 }
 
 .mx-scalar {
-  padding: 4px 8px;
+  padding: 4px 6px;
+  font-size: 17px;
+  font-variant-numeric: tabular-nums;
 }
 
 .mx-error {
-  margin: 4px 14px 10px;
+  margin: 4px 16px 10px;
   color: var(--danger);
   font-size: 13px;
   line-height: 1.45;
 }
 
 .mx-result .mx-error {
-  margin: 4px 0 4px;
+  margin: 4px 0;
 }
 
+.mx-eigs {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.mx-eig {
+  padding: 2px 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.mx-eig-note {
+  color: var(--text-muted);
+}
+
+/* --------------------------------------------------------------------- help */
+
 .mx-help {
-  width: min(820px, 100%);
+  width: min(780px, 100%);
   margin-top: 16px;
   font-size: 13.5px;
 }
@@ -276,4 +403,29 @@
 .mx-help-body code {
   font-family: var(--font-mono);
   font-size: 12.5px;
+}
+
+@media (max-width: 960px) {
+  .mx-body {
+    grid-template-columns: minmax(0, 1fr);
+    overflow-y: auto;
+  }
+
+  .mx-main {
+    overflow: visible;
+  }
+
+  .mx-viz {
+    overflow: visible;
+  }
+
+  .mx-viz-stage {
+    min-height: 320px;
+  }
+}
+
+@media (max-width: 520px) {
+  .mx-cell {
+    width: 60px;
+  }
 }
