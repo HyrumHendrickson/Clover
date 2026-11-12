@@ -9,6 +9,20 @@
  *                      { type: 'log', id, text }
  *                      { type: 'compiled', id, ok, pdf, error, log }
  */
+/*
+ * This page is sandboxed without allow-same-origin, so it has an opaque origin. In that state, merely reading
+ * `window.caches` throws a SecurityError, and opening IndexedDB fails too. The engine probes both with
+ * `typeof caches`, which throws instead of answering. Hiding them makes it see "no storage" and compile without
+ * caching, instead of failing before it starts.
+ */
+for (const name of ['caches', 'indexedDB']) {
+  try {
+    Object.defineProperty(window, name, { value: undefined, configurable: true });
+  } catch {
+    // Already replaced, or not configurable: the engine's own guards still apply.
+  }
+}
+
 const MAX_FILES = 40;
 const MAX_TOTAL = 12_000_000;
 const PATH = /^[A-Za-z0-9_][A-Za-z0-9._ /-]*$/;

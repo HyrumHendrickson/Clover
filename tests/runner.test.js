@@ -132,3 +132,11 @@ test('rule loading explains missing or malformed definitions', async () => {
     runner.close();
   }
 });
+
+test('the LaTeX runner hides storage that a sandboxed frame cannot read, before it loads the engine', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const source = await readFile(new URL('../runner/latex.js', import.meta.url), 'utf8');
+  const shim = source.indexOf("['caches', 'indexedDB']");
+  assert.ok(shim > 0, 'caches and indexedDB are shadowed');
+  assert.ok(shim < source.indexOf('vendor/siglum/engine.js'), 'the shim runs before the engine is imported');
+});
