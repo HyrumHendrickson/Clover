@@ -17,6 +17,7 @@ const STROKE = {
   external: 'M14 4h6v6M20 4l-9 9M18 14v6H4V6h6',
   check: 'M5 12.5l4.5 4.5L19 7.5',
   settings: 'M4 7h9M17 7h3M4 17h3M11 17h9M15 4v6M9 14v6',
+  search: 'M11 4a7 7 0 100 14 7 7 0 000-14zM20 20l-4-4',
   'zoom-in': 'M11 4a7 7 0 100 14 7 7 0 000-14zM20 20l-4-4M11 8v6M8 11h6',
   'zoom-out': 'M11 4a7 7 0 100 14 7 7 0 000-14zM20 20l-4-4M8 11h6',
   'arrow-up': 'M12 19V5m0 0l-6 6m6-6l6 6',

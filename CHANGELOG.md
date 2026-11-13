@@ -6,6 +6,7 @@ All notable changes are documented here. The format follows [Keep a Changelog](h
 
 ### Added
 
+- Home screen: tools are grouped into sections and a search box filters them by name, description, or related words (press / to focus it, Enter to open the first match, Escape to clear it). The Help dialog lists the keyboard shortcuts.
 - A Probability tab: exact permutations and combinations (with or without repeats, up to 1000), two events (union, conditional probabilities, independence), Bayes' theorem with natural frequencies, binomial probabilities with a shaded chart, and the expected value, variance, and standard deviation of a random variable. See docs/calculators.md.
 - A Finance tab: compound interest with regular contributions and inflation, the contribution needed to reach a savings goal, loan payments with extra payments and a year-by-year schedule, present and future value solved for any unknown, and NPV, IRR, and payback with an NPV profile chart. See docs/calculators.md.
 - Statistics: data goes into a spreadsheet-style grid with named columns, row numbers, and arrow-key movement, and the sheet grows as you type. **Upload CSV** loads a file (comma, tab, or semicolon separated; a text-only first row is used as the column names), **Download** saves the data as CSV, and **Edit as text** shows and edits the same data as CSV text. Pasting cells from a spreadsheet or CSV text fills the grid from the cell you paste into. Up to 8 columns and 500 rows.
@@ -22,6 +23,8 @@ All notable changes are documented here. The format follows [Keep a Changelog](h
 
 ### Changed
 
+- The Notebook picture on the home screen shows a written cell, a math cell, and a graph cell that share a definition, and draws correctly in both themes.
+- The README now lists the Geometry tool, uses the name Linear algebra, and describes the home screen; the package and page descriptions cover every tool.
 - Graphing (2D and 3D) is restyled after Desmos: a white canvas with grey gridlines, a grey gutter beside the numbered expression rows, a coloured bar on the row being edited, an add bar that stays at the top of the list, and a vertical stack of view buttons (settings, zoom, reset, save) over the graph. The 3D preset menu moved to the lower left of the graph.
 - Statistics: the layout is a data sheet on the left and the analysis on the right, with the chart and the numbers side by side when there is room, and underlined mode tabs.
 - Linear algebra: the sheet and the picture now share the full width. The 780-pixel cap on the sheet left an empty band between them on wide screens.
@@ -34,6 +37,7 @@ All notable changes are documented here. The format follows [Keep a Changelog](h
 
 ### Fixed
 
+- The CI and Pages workflows only ran for pushes to `main`, but the default branch is `master`, so neither ran. They now run for both.
 - Linear algebra: the picture canvas covered the inputs, so nothing could be typed.
 - LaTeX: a failed engine download now says how to fix it.
 

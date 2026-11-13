@@ -30,6 +30,53 @@ test('first run shows the launcher with one card per tool', () => {
   assert.equal(TOOL_LIST.length, 16);
 });
 
+test('the launcher groups every tool exactly once', () => {
+  const groups = qa('.launch-group', elements.launcher);
+  assert.ok(groups.length >= 3);
+  for (const group of groups) assert.ok(q('.launch-group-title', group).textContent.length > 0);
+  assert.equal(qa('.launch-card', elements.launcher).length, TOOL_LIST.length);
+  const names = qa('.launch-name', elements.launcher).map((n) => n.textContent);
+  assert.equal(new Set(names).size, TOOL_LIST.length);
+});
+
+test('launcher search filters by name and related words, and explains an empty result', () => {
+  const search = q('.launch-search', elements.launcher);
+  const visible = () => qa('.launch-card', elements.launcher).filter((c) => !c.hidden);
+  type(window, search, 'derivative');
+  assert.deepEqual(
+    visible().map((c) => q('.launch-name', c).textContent),
+    ['Symbolic algebra'],
+  );
+  type(window, search, 'loan');
+  assert.deepEqual(
+    visible().map((c) => q('.launch-name', c).textContent),
+    ['Finance'],
+  );
+  assert.ok(qa('.launch-group', elements.launcher).some((g) => g.hidden));
+  type(window, search, 'zzzz');
+  assert.equal(visible().length, 0);
+  assert.equal(q('.launch-empty', elements.launcher).hidden, false);
+  assert.match(q('.launch-empty', elements.launcher).textContent, /zzzz/);
+  press(window, search, 'Escape');
+  assert.equal(search.value, '');
+  assert.equal(visible().length, TOOL_LIST.length);
+  assert.equal(q('.launch-empty', elements.launcher).hidden, true);
+});
+
+test('pressing slash focuses the search, and Enter opens the first match', () => {
+  const search = q('.launch-search', elements.launcher);
+  document.body.focus();
+  press(window, document.body, '/');
+  assert.equal(document.activeElement, search);
+  type(window, search, 'finance');
+  press(window, search, 'Enter');
+  assert.equal(app.tabs.length, 1);
+  assert.equal(app.tabs[0].type, 'finance');
+  app.closeTab(app.tabs[0].id, { undo: false });
+  assert.equal(elements.launcher.hidden, false);
+  assert.equal(search.value, '');
+});
+
 test('every tool opens without errors, including two of the same kind', async () => {
   for (const tool of TOOL_LIST) {
     const tab = app.addTab({ type: tool.type });

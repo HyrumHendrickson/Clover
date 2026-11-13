@@ -1,7 +1,7 @@
 {
   "name": "clover",
   "version": "0.1.0",
-  "description": "A browser workspace for visualising mathematics: graphs, matrices, complex functions, vector fields, and Python turtle fractals.",
+  "description": "A browser workspace for visualising mathematics: graphing, linear algebra, geometry, statistics, complex functions, vector fields, fractals, symbolic algebra, notebooks, and code.",
   "private": true,
   "type": "module",
   "license": "GPL-2.0-only",

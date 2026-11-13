@@ -23,6 +23,34 @@ import {
 const BRAND_TITLE = 'Clover \u2014 mathematics workspace';
 const FILE_EXTENSION = '.clover';
 
+/** Launcher sections, in display order. Tools missing from every list fall into the last one. */
+const LAUNCH_GROUPS = [
+  { title: 'Plot and draw', types: ['graph', 'graph3d', 'geometry', 'vector', 'complex', 'fractals'] },
+  { title: 'Calculate and analyse', types: ['matrix', 'maxima', 'stats', 'probability', 'finance'] },
+  { title: 'Write and code', types: ['notebook', 'latex', 'python', 'programming', 'automata'] },
+];
+const OTHER_GROUP = 'More tools';
+/** Extra words the launcher search matches, so "derivative" finds the tool that takes derivatives. */
+const LAUNCH_KEYWORDS = {
+  graph: 'function equation plot desmos curve inequality regression slider',
+  graph3d: 'surface three dimensional 3d plot',
+  geometry: 'shapes triangle circle construction compass proof',
+  vector: 'field divergence curl flow differential',
+  complex: 'imaginary domain colouring coloring analytic',
+  fractals: 'mandelbrot julia newton chaos',
+  matrix: 'linear algebra eigenvalue eigenvector determinant transformation',
+  maxima: 'cas symbolic derivative integral solve simplify factor algebra calculus',
+  stats: 'statistics regression mean median hypothesis test chart csv data',
+  probability: 'combinations permutations bayes binomial dice odds',
+  finance: 'loan mortgage interest savings investment npv irr',
+  notebook: 'document notes cells markdown report',
+  latex: 'tex typeset pdf paper document',
+  python: 'turtle drawing code script',
+  programming: 'code rust java c++ compiler run',
+  automata: 'life conway cellular grid simulation rule',
+};
+const SEARCH_MIN_TOOLS = 6;
+
 const dateStamp = () => new Date().toISOString().slice(0, 10);
 const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
@@ -136,6 +164,17 @@ export class App {
       if (!tablist.contains(event.relatedTarget)) this.clearDropMarks();
     });
 
+    this.onShortcut = (event) => {
+      if (event.key !== '/' || event.ctrlKey || event.metaKey || event.altKey || event.defaultPrevented) return;
+      if (!this.launchSearch || this.el.launcher.hidden) return;
+      const target = event.target;
+      if (target?.closest?.('input, textarea, select, [contenteditable=""], [contenteditable="true"], dialog')) return;
+      event.preventDefault();
+      this.launchSearch.focus();
+      this.launchSearch.select();
+    };
+    document.addEventListener('keydown', this.onShortcut);
+
     this.bindFileDrop();
     window.addEventListener('pagehide', () => {
       this.save.cancel();
@@ -182,17 +221,69 @@ export class App {
 
   buildLauncher() {
     this.previews = [];
-    const cards = this.toolList.map((tool) => {
+    this.launchCards = [];
+    const makeCard = (tool) => {
       const canvas = h('canvas', { class: 'launch-preview', 'aria-hidden': 'true' });
       this.previews.push({ tool, canvas });
-      return h(
+      const element = h(
         'button',
         { class: 'launch-card', type: 'button', onclick: () => this.addTab({ type: tool.type }) },
         canvas,
         h('span', { class: 'launch-name' }, icon(`tool-${tool.type}`, 18), tool.name),
         h('span', { class: 'launch-desc' }, tool.description),
       );
-    });
+      const haystack = `${tool.name} ${tool.description} ${LAUNCH_KEYWORDS[tool.type] ?? ''}`.toLowerCase();
+      this.launchCards.push({ tool, element, haystack });
+      return element;
+    };
+
+    const placed = new Set();
+    const sections = [];
+    const addSection = (title, tools) => {
+      if (tools.length === 0) return;
+      const grid = h('div', { class: 'launch-grid' }, tools.map(makeCard));
+      const heading = h('h2', { class: 'launch-group-title' }, title);
+      const section = h('section', { class: 'launch-group' }, heading, grid);
+      sections.push(section);
+    };
+    for (const group of LAUNCH_GROUPS) {
+      const tools = this.toolList.filter((tool) => group.types.includes(tool.type));
+      for (const tool of tools) placed.add(tool.type);
+      addSection(group.title, tools);
+    }
+    addSection(
+      sections.length ? OTHER_GROUP : 'Tools',
+      this.toolList.filter((tool) => !placed.has(tool.type)),
+    );
+    this.launchSections = sections;
+
+    const showSearch = this.toolList.length >= SEARCH_MIN_TOOLS;
+    this.launchEmpty = h('p', { class: 'launch-empty', role: 'status', hidden: true });
+    this.launchSearch = showSearch
+      ? h('input', {
+          class: 'launch-search',
+          type: 'search',
+          placeholder: 'Search tools, for example \u201cderivative\u201d or \u201cloan\u201d',
+          'aria-label': 'Search tools',
+          autocomplete: 'off',
+          spellcheck: 'false',
+          oninput: () => this.filterLauncher(),
+          onkeydown: (event) => {
+            if (event.key === 'Enter') {
+              const first = this.launchCards.find((card) => !card.element.hidden);
+              if (first) {
+                event.preventDefault();
+                first.element.click();
+              }
+            } else if (event.key === 'Escape' && this.launchSearch.value) {
+              event.preventDefault();
+              this.launchSearch.value = '';
+              this.filterLauncher();
+            }
+          },
+        })
+      : null;
+
     this.el.launcher.replaceChildren(
       h(
         'div',
@@ -204,16 +295,37 @@ export class App {
           { class: 'launch-lede' },
           'A workspace for seeing mathematics. Open as many tabs as you like, including several of the same tool. Everything is saved on this device.',
         ),
-        h('div', { class: 'launch-grid' }, cards),
+        this.launchSearch ? h('div', { class: 'launch-searchbox' }, icon('search', 18), this.launchSearch) : null,
+        this.launchEmpty,
+        ...sections,
         h(
           'p',
           { class: 'launch-foot' },
           'Have a Clover file? ',
           h('button', { class: 'link-button', type: 'button', onclick: () => this.el.importInput.click() }, 'Open it'),
           ' or drop it anywhere on this page.',
+          this.launchSearch ? ' Press / to search.' : '',
         ),
       ),
     );
+  }
+
+  /** Show only the tools that match every word typed in the launcher search. */
+  filterLauncher() {
+    const words = (this.launchSearch?.value ?? '').toLowerCase().split(/\s+/).filter(Boolean);
+    let shown = 0;
+    for (const card of this.launchCards) {
+      const match = words.every((word) => card.haystack.includes(word));
+      card.element.hidden = !match;
+      if (match) shown += 1;
+    }
+    for (const section of this.launchSections) {
+      section.hidden = !section.querySelector('.launch-card:not([hidden])');
+    }
+    this.launchEmpty.hidden = shown > 0;
+    if (shown === 0) {
+      this.launchEmpty.textContent = `No tool matches \u201c${this.launchSearch.value.trim()}\u201d. Try a shorter word, such as \u201cgraph\u201d or \u201cmatrix\u201d.`;
+    }
   }
 
   drawPreviews() {
@@ -235,6 +347,10 @@ export class App {
     this.activeId = null;
     for (const panel of this.panels.values()) panel.hidden = true;
     this.el.launcher.hidden = false;
+    if (this.launchSearch?.value) {
+      this.launchSearch.value = '';
+      this.filterLauncher();
+    }
     document.title = BRAND_TITLE;
     this.updateTabSelection();
     this.drawPreviews();
@@ -675,6 +791,7 @@ export class App {
   }
 
   teardown() {
+    if (this.onShortcut) document.removeEventListener('keydown', this.onShortcut);
     for (const instance of this.instances.values()) {
       instance.onHide?.();
       instance.destroy?.();
@@ -942,6 +1059,16 @@ export class App {
               {},
               'With a tab focused: Left and Right arrows switch tabs, Delete closes, and closing can be undone.',
             ),
+          ),
+        ),
+        section(
+          'Keyboard',
+          h(
+            'ul',
+            {},
+            h('li', {}, 'On the home screen, press / to search the tools and Enter to open the first match.'),
+            h('li', {}, 'Tab strip: F2 renames, Delete closes, Home and End jump to the first and last tab.'),
+            h('li', {}, 'Menus and dialogs close with Escape.'),
           ),
         ),
         section(

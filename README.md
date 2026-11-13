@@ -2,29 +2,34 @@
 
 A browser workspace for visualising mathematics. Open as many tabs as you like, including several of the same tool, and share your work as a single file.
 
+- Sixteen tools in one place, grouped on the home screen and searchable: press `/` and type a word such as "derivative" or "loan".
+- Light and dark themes, keyboard access throughout, and no account or install.
+- Work is saved on your device. Export a tab or the whole workspace as a `.clover` file.
+
 https://hyrumhendrickson.github.io/Clover/
 
 ![Clover launcher](docs/images/launcher.png)
 
 ## Tools
 
-| Tool                  | What it does                                                                                                                                                                                  |
-| --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Graphing**          | A built-in 2D graphing calculator: functions, equations, inequalities, polar and parametric curves, points and lists, sliders, tables, folders, regressions, and click-to-inspect intercepts. |
-| **Statistics**        | Data columns with summaries and charts, regression, probability distributions, and significance tests.                                                                                        |
-| **Probability**       | Counting (permutations and combinations, exact for any size), two events, Bayes' theorem, repeated trials, and the expected value of a random variable.                                       |
-| **Finance**           | Compound interest, savings goals, loan payments with extra payments, present and future value, and NPV and IRR, with charts and year-by-year tables.                                          |
-| **Matrices**          | Matrix × matrix and matrix × vector, one dot product at a time. For 2×2 maps it draws the transformed grid, unit square, and basis vectors. Drag the vector tip.                              |
-| **Complex functions** | Domain colouring of any f(z). Three colourings, pan and zoom, a value probe, and PNG export.                                                                                                  |
-| **Vector fields**     | Plot F = ⟨P, Q⟩ as arrows, magnitude shading, and animated flow. Click to trace trajectories. Divergence and curl are shown under the cursor.                                                 |
-| **3D graphing**       | Surfaces, implicit surfaces, space curves, parametric surfaces, and points. Orbit, pan, and zoom.                                                                                             |
-| **Notebook**          | Text, math, and graph cells in one document, sharing definitions.                                                                                                                             |
-| **Fractals**          | Mandelbrot, Julia, Burning Ship, tricorn, and Newton fractals with pan and zoom.                                                                                                              |
-| **Cellular automata** | Rules written in Python with any number of colours. Click to paint; play, pause, step, and step back. Includes Life and a forest fire.                                                        |
-| **LaTeX**             | Several files and pictures, source beside the PDF. TeX Live runs in WebAssembly in a sandboxed frame.                                                                                         |
-| **Symbolic algebra**  | Maxima syntax: expand, differentiate, integrate, solve. A built-in engine, not the full Maxima program.                                                                                       |
-| **Programming**       | Write and run Python, Rust, C, C++, or Java with standard input and output. Runs on a remote Judge0 service.                                                                                  |
-| **Python turtle**     | Python with the `turtle` module, run in the browser. Presets for Koch, Sierpinski, dragon, tree, Hilbert, Lévy, Gosper, and Barnsley fern.                                                    |
+| Tool                  | What it does                                                                                                                                                                                        |
+| --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Graphing**          | A built-in 2D graphing calculator: functions, equations, inequalities, polar and parametric curves, points and lists, sliders, tables, folders, regressions, and click-to-inspect intercepts.       |
+| **Geometry**          | Construct figures in Euclidean geometry and check claims about them exactly. Proofs use exact algebra, never measured approximations.                                                               |
+| **Statistics**        | Data columns with summaries and charts, regression, probability distributions, and significance tests.                                                                                              |
+| **Probability**       | Counting (permutations and combinations, exact for any size), two events, Bayes' theorem, repeated trials, and the expected value of a random variable.                                             |
+| **Finance**           | Compound interest, savings goals, loan payments with extra payments, present and future value, and NPV and IRR, with charts and year-by-year tables.                                                |
+| **Linear algebra**    | Matrix × matrix and matrix × vector, one dot product at a time, plus eigenvalues and eigenvectors. For 2×2 maps it draws the transformed grid, unit square, and basis vectors. Drag the vector tip. |
+| **Complex functions** | Domain colouring of any f(z). Three colourings, pan and zoom, a value probe, and PNG export.                                                                                                        |
+| **Vector fields**     | Plot F = ⟨P, Q⟩ as arrows, magnitude shading, and animated flow. Click to trace trajectories. Divergence and curl are shown under the cursor.                                                       |
+| **3D graphing**       | Surfaces, implicit surfaces, space curves, parametric surfaces, and points. Orbit, pan, and zoom.                                                                                                   |
+| **Notebook**          | Text, math, and graph cells in one document, sharing definitions.                                                                                                                                   |
+| **Fractals**          | Mandelbrot, Julia, Burning Ship, tricorn, and Newton fractals with pan and zoom.                                                                                                                    |
+| **Cellular automata** | Rules written in Python with any number of colours. Click to paint; play, pause, step, and step back. Includes Life and a forest fire.                                                              |
+| **LaTeX**             | Several files and pictures, source beside the PDF. TeX Live runs in WebAssembly in a sandboxed frame.                                                                                               |
+| **Symbolic algebra**  | Maxima syntax: expand, differentiate, integrate, solve. A built-in engine, not the full Maxima program.                                                                                             |
+| **Programming**       | Write and run Python, Rust, C, C++, or Java with standard input and output. Runs on a remote Judge0 service.                                                                                        |
+| **Python turtle**     | Python with the `turtle` module, run in the browser. Presets for Koch, Sierpinski, dragon, tree, Hilbert, Lévy, Gosper, and Barnsley fern.                                                          |
 
 ![Complex functions](docs/images/complex.png)
 ![Python turtle](docs/images/python.png)
@@ -62,8 +67,8 @@ python3 -m http.server 8080
 
 ```sh
 npm install
-npm run check        # lint, format check, tests
-npm test
+npm run check        # lint, format check, tests (run before every commit)
+npm test             # tests only, requires Node 22+
 npm run verify:vendor
 ```
 
@@ -71,7 +76,7 @@ Tests cover the expression parser, complex math, domain colouring, field numeric
 
 ## Deploy
 
-Push to `main`. The Pages workflow in `.github/workflows/pages.yml` publishes the site. Enable it under **Settings → Pages → Source: GitHub Actions**.
+Push to `master` or `main`. The Pages workflow in `.github/workflows/pages.yml` publishes the site. Enable it under **Settings → Pages → Source: GitHub Actions**.
 
 ## Security
 

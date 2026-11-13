@@ -150,34 +150,103 @@ export default {
 
   preview(canvas, colors) {
     const { ctx, width, height } = fitCanvas(canvas);
+    const accent = colors.accent ?? colors.a;
+    const second = colors.b ?? colors.a;
     ctx.fillStyle = colors.bg;
     ctx.fillRect(0, 0, width, height);
-    const line = (y, w, color, thick = 6) => {
-      ctx.fillStyle = color;
-      ctx.fillRect(width * 0.1, y, width * w, thick);
+
+    const round = (x, y, w, h, radius) => {
+      const r = Math.min(radius, w / 2, h / 2);
+      ctx.beginPath();
+      ctx.moveTo(x + r, y);
+      ctx.arcTo(x + w, y, x + w, y + h, r);
+      ctx.arcTo(x + w, y + h, x, y + h, r);
+      ctx.arcTo(x, y + h, x, y, r);
+      ctx.arcTo(x, y, x + w, y, r);
+      ctx.closePath();
     };
-    line(height * 0.14, 0.45, colors.ink, 8);
-    line(height * 0.28, 0.7, colors.grid, 5);
-    line(height * 0.36, 0.55, colors.grid, 5);
-    ctx.strokeStyle = colors.grid;
+    const bar = (x, y, w, h, color) => {
+      ctx.fillStyle = color;
+      round(x, y, w, h, h / 2);
+      ctx.fill();
+    };
+
+    // Left column: the written cells. A coloured rule marks each cell, as in the real notebook.
+    const pad = Math.round(width * 0.07);
+    const colW = width * 0.46;
+    const rule = (y, h, color) => bar(pad, y, 3, h, color);
+
+    const textTop = height * 0.14;
+    rule(textTop, height * 0.3, colors.grid);
+    const left = pad + 12;
+    bar(left, textTop + 2, colW * 0.62, 8, colors.ink);
+    bar(left, textTop + 20, colW * 0.95, 5, colors.grid);
+    bar(left, textTop + 31, colW * 0.8, 5, colors.grid);
+    bar(left, textTop + 42, colW * 0.5, 5, colors.grid);
+
+    const mathTop = height * 0.56;
+    const mathH = height * 0.3;
+    rule(mathTop, mathH, accent);
+    ctx.fillStyle = colors.ink;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.font = `italic ${Math.round(height * 0.13)}px "Times New Roman", Georgia, serif`;
+    ctx.fillText('f(x) = x\u00b2 \u2212 1', left, mathTop + mathH * 0.3);
+    ctx.fillStyle = accent;
+    ctx.font = `${Math.round(height * 0.1)}px "Times New Roman", Georgia, serif`;
+    ctx.fillText('f(2) = 3', left, mathTop + mathH * 0.78);
+
+    // Right column: a graph cell sharing the definition of f.
+    const gx = pad + colW + width * 0.07;
+    const gy = height * 0.14;
+    const gw = width - gx - pad;
+    const gh = height * 0.72;
+    ctx.fillStyle = colors.bg;
+    ctx.strokeStyle = colors.axis;
     ctx.lineWidth = 1;
-    const top = height * 0.5;
-    const box = height * 0.4;
-    ctx.strokeRect(width * 0.1, top, width * 0.8, box);
-    ctx.beginPath();
-    ctx.moveTo(width * 0.1, top + box / 2);
-    ctx.lineTo(width * 0.9, top + box / 2);
+    round(gx, gy, gw, gh, 6);
+    ctx.fill();
     ctx.stroke();
+
+    ctx.save();
+    round(gx, gy, gw, gh, 6);
+    ctx.clip();
+    ctx.strokeStyle = colors.grid;
     ctx.beginPath();
-    for (let px = 0; px <= width * 0.8; px += 2) {
-      const x = (px / (width * 0.8)) * 2 - 1;
-      const y = top + box / 2 - (x * x * 1.6 - 0.5) * (box / 3);
-      if (px === 0) ctx.moveTo(width * 0.1, y);
-      else ctx.lineTo(width * 0.1 + px, y);
+    for (let i = 1; i < 4; i += 1) {
+      ctx.moveTo(gx + (gw * i) / 4, gy);
+      ctx.lineTo(gx + (gw * i) / 4, gy + gh);
+      ctx.moveTo(gx, gy + (gh * i) / 4);
+      ctx.lineTo(gx + gw, gy + (gh * i) / 4);
+    }
+    ctx.stroke();
+    ctx.strokeStyle = colors.axis;
+    ctx.beginPath();
+    ctx.moveTo(gx + gw / 2, gy);
+    ctx.lineTo(gx + gw / 2, gy + gh);
+    ctx.moveTo(gx, gy + gh * 0.58);
+    ctx.lineTo(gx + gw, gy + gh * 0.58);
+    ctx.stroke();
+    const at = (t) => [gx + gw / 2 + t * gw * 0.3, gy + gh * 0.58 - (t * t - 1) * gh * 0.24];
+    ctx.beginPath();
+    for (let t = -1.5; t <= 1.5; t += 0.05) {
+      const [px, py] = at(t);
+      if (t === -1.5) ctx.moveTo(px, py);
+      else ctx.lineTo(px, py);
     }
     ctx.strokeStyle = colors.a;
     ctx.lineWidth = 2.5;
+    ctx.lineJoin = 'round';
     ctx.stroke();
+    ctx.restore();
+
+    for (const t of [-1, 1]) {
+      const [px, py] = at(t);
+      ctx.fillStyle = second;
+      ctx.beginPath();
+      ctx.arc(px, py, 3.2, 0, Math.PI * 2);
+      ctx.fill();
+    }
   },
 
   mount(root, ctx) {
