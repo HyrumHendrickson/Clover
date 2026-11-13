@@ -81,7 +81,7 @@
 }
 
 .ca-speed-field {
-  align-items: center;
+  align-items: flex-start;
 }
 
 .ca-speed {
@@ -115,6 +115,7 @@
 @media (max-width: 960px) {
   .ca-body {
     grid-template-columns: minmax(0, 1fr);
+    grid-auto-rows: max-content;
     overflow: auto;
   }
 
@@ -356,6 +357,7 @@
 @media (max-width: 960px) {
   .ltx-body {
     grid-template-columns: minmax(0, 1fr);
+    grid-auto-rows: max-content;
     overflow: auto;
   }
 
@@ -614,10 +616,8 @@
 .mx2-side-title {
   margin: 0;
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: 12.5px;
   font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
 }
 
 .mx2-side-hint,

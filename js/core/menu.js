@@ -19,10 +19,14 @@ export function openMenu(anchor, items, { align = 'start' } = {}) {
   const menu = h('div', { class: 'menu', role: 'menu' });
   const buttons = [];
 
+  const trigger = anchor instanceof HTMLElement ? anchor : null;
+  trigger?.setAttribute('aria-expanded', 'true');
+
   const close = ({ restoreFocus = true } = {}) => {
     if (current?.menu !== menu) return;
     current = null;
     menu.remove();
+    trigger?.setAttribute('aria-expanded', 'false');
     document.removeEventListener('pointerdown', onOutside, true);
     window.removeEventListener('resize', close);
     window.removeEventListener('blur', close);

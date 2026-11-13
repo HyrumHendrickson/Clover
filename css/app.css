@@ -62,6 +62,22 @@
   display: none;
 }
 
+/* app.js sets these when tabs run past the edge, so a cut-off tab looks scrollable rather than broken. */
+#tablist[data-overflow-start='true'] {
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 28px);
+  mask-image: linear-gradient(to right, transparent, #000 28px);
+}
+
+#tablist[data-overflow-end='true'] {
+  -webkit-mask-image: linear-gradient(to left, transparent, #000 28px);
+  mask-image: linear-gradient(to left, transparent, #000 28px);
+}
+
+#tablist[data-overflow-start='true'][data-overflow-end='true'] {
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 28px, #000 calc(100% - 28px), transparent);
+  mask-image: linear-gradient(to right, transparent, #000 28px, #000 calc(100% - 28px), transparent);
+}
+
 .tab {
   position: relative;
   display: flex;
@@ -165,6 +181,7 @@
 }
 
 .new-tab {
+  flex: none;
   align-self: center;
   margin-bottom: 4px;
 }
@@ -205,7 +222,7 @@
   position: absolute;
   inset: 0;
   overflow: auto;
-  padding: 36px 24px 48px;
+  padding: 40px 24px 56px;
 }
 
 .launch-inner {
@@ -213,14 +230,9 @@
   margin: 0 auto;
 }
 
-.launch-logo {
-  display: block;
-  margin-bottom: 4px;
-}
-
 .launch-title {
   margin: 0 0 8px;
-  font: 600 48px/1.1 var(--font-display);
+  font: 600 44px/1.1 var(--font-display);
   letter-spacing: 0.005em;
 }
 
@@ -273,11 +285,19 @@
 }
 
 .launch-group-title {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
   margin: 0 0 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+  font: 600 16px/1.2 var(--font-ui, inherit);
+}
+
+.launch-group-count {
   color: var(--text-muted);
-  font: 600 13px/1.2 var(--font-ui, inherit);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  font-size: 13px;
+  font-weight: 400;
 }
 
 .launch-empty {
@@ -342,6 +362,7 @@
 }
 
 .launch-desc {
+  flex: 1;
   padding: 0 16px 16px;
   color: var(--text-muted);
   font-size: 13.5px;
@@ -375,6 +396,11 @@
     width: 34px;
     padding: 0;
   }
+
+  /* Icon-only buttons have no room for the menu chevron. */
+  .actions .btn[aria-haspopup='menu']::after {
+    display: none;
+  }
 }
 
 @media (max-width: 640px) {
@@ -382,11 +408,55 @@
     display: none;
   }
 
+  .topbar {
+    gap: 4px;
+    padding-inline: 8px;
+  }
+
+  .launcher {
+    padding: 24px 16px 40px;
+  }
+
   .launch-title {
-    font-size: 38px;
+    font-size: 36px;
   }
 
   .launch-searchbox {
     max-width: none;
+  }
+
+  .launch-grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 10px;
+  }
+
+  /* One tool per short row (picture beside the words) so the whole list is not a dozen screens tall. */
+  .launch-card {
+    display: grid;
+    grid-template-columns: 104px minmax(0, 1fr);
+    grid-template-rows: auto 1fr;
+    grid-template-areas:
+      'preview name'
+      'preview desc';
+    min-height: 96px;
+  }
+
+  .launch-preview {
+    grid-area: preview;
+    height: 100%;
+    min-height: 96px;
+    border-right: 1px solid var(--border);
+    border-bottom: 0;
+  }
+
+  .launch-name {
+    grid-area: name;
+    padding: 12px 12px 2px;
+  }
+
+  .launch-desc {
+    grid-area: desc;
+    padding: 0 12px 12px;
+    font-size: 13px;
   }
 }

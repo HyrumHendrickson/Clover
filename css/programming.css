@@ -33,10 +33,8 @@
   justify-content: space-between;
   gap: 8px;
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: 12.5px;
   font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
 }
 
 .prog-file {
@@ -91,10 +89,8 @@
   margin: 0;
   padding: 6px 12px 0;
   color: var(--text-muted);
-  font-size: 11.5px;
+  font-size: 12.5px;
   font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
 }
 
 .prog-block.is-error .prog-block-title,
@@ -120,6 +116,7 @@
 @media (max-width: 960px) {
   .prog-body {
     grid-template-columns: minmax(0, 1fr);
+    grid-auto-rows: max-content;
     overflow: auto;
   }
 

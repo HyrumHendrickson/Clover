@@ -158,6 +158,24 @@ export class App {
     helpButton.addEventListener('click', () => this.showHelp());
 
     tablist.addEventListener('keydown', (event) => this.onTabKeydown(event));
+    tablist.addEventListener('scroll', () => this.updateTabOverflow(), { passive: true });
+    // A mouse wheel turns sideways over the tab strip, which otherwise has no visible scrollbar.
+    tablist.addEventListener(
+      'wheel',
+      (event) => {
+        if (Math.abs(event.deltaY) <= Math.abs(event.deltaX) || tablist.scrollWidth <= tablist.clientWidth) return;
+        event.preventDefault();
+        tablist.scrollLeft += event.deltaY;
+      },
+      { passive: false },
+    );
+    if (typeof ResizeObserver !== 'undefined') new ResizeObserver(() => this.updateTabOverflow()).observe(tablist);
+    window.addEventListener(
+      'resize',
+      debounce(() => {
+        if (!this.el.launcher.hidden) this.drawPreviews();
+      }, 150),
+    );
     tablist.addEventListener('dragover', (event) => this.onTabDragOver(event));
     tablist.addEventListener('drop', (event) => this.onTabDrop(event));
     tablist.addEventListener('dragleave', (event) => {
@@ -174,6 +192,15 @@ export class App {
       this.launchSearch.select();
     };
     document.addEventListener('keydown', this.onShortcut);
+    this.onHelpShortcut = (event) => {
+      if (event.key !== '?' || event.ctrlKey || event.metaKey || event.altKey || event.defaultPrevented) return;
+      if (event.target?.closest?.('input, textarea, select, [contenteditable=""], [contenteditable="true"], dialog'))
+        return;
+      if (document.querySelector('dialog[open]') || helpButton.offsetParent === null) return;
+      event.preventDefault();
+      this.showHelp();
+    };
+    document.addEventListener('keydown', this.onHelpShortcut);
 
     this.bindFileDrop();
     window.addEventListener('pagehide', () => {
@@ -242,7 +269,16 @@ export class App {
     const addSection = (title, tools) => {
       if (tools.length === 0) return;
       const grid = h('div', { class: 'launch-grid' }, tools.map(makeCard));
-      const heading = h('h2', { class: 'launch-group-title' }, title);
+      const heading = h(
+        'h2',
+        { class: 'launch-group-title' },
+        title,
+        h(
+          'span',
+          { class: 'launch-group-count', dataset: { total: String(tools.length) } },
+          plural(tools.length, 'tool'),
+        ),
+      );
       const section = h('section', { class: 'launch-group' }, heading, grid);
       sections.push(section);
     };
@@ -263,7 +299,7 @@ export class App {
       ? h('input', {
           class: 'launch-search',
           type: 'search',
-          placeholder: 'Search tools, for example \u201cderivative\u201d or \u201cloan\u201d',
+          placeholder: 'Search tools, such as \u201cderivative\u201d',
           'aria-label': 'Search tools',
           autocomplete: 'off',
           spellcheck: 'false',
@@ -288,7 +324,6 @@ export class App {
       h(
         'div',
         { class: 'launch-inner' },
-        h('img', { class: 'launch-logo', src: 'assets/clover-128.png', width: 72, height: 72, alt: '' }),
         h('h1', { class: 'launch-title' }, 'Clover'),
         h(
           'p',
@@ -320,7 +355,10 @@ export class App {
       if (match) shown += 1;
     }
     for (const section of this.launchSections) {
-      section.hidden = !section.querySelector('.launch-card:not([hidden])');
+      const visible = section.querySelectorAll('.launch-card:not([hidden])').length;
+      section.hidden = visible === 0;
+      const count = section.querySelector('.launch-group-count');
+      if (count) count.textContent = plural(visible, 'tool');
     }
     this.launchEmpty.hidden = shown > 0;
     if (shown === 0) {
@@ -446,6 +484,15 @@ export class App {
     this.save();
   }
 
+  /** Mark which sides of the tab strip have tabs hidden past the edge, so the stylesheet can fade them. */
+  updateTabOverflow() {
+    const { tablist } = this.el;
+    const start = tablist.scrollLeft > 1;
+    const end = tablist.scrollLeft + tablist.clientWidth < tablist.scrollWidth - 1;
+    tablist.dataset.overflowStart = String(start);
+    tablist.dataset.overflowEnd = String(end);
+  }
+
   updateTabSelection() {
     for (const element of this.el.tablist.children) {
       const selected = element.dataset.id === this.activeId;
@@ -453,6 +500,7 @@ export class App {
       element.tabIndex = selected ? 0 : -1;
       if (selected) element.scrollIntoView({ block: 'nearest', inline: 'nearest' });
     }
+    this.updateTabOverflow();
     if (!this.activeId) {
       const first = this.el.tablist.firstElementChild;
       if (first) first.tabIndex = 0;
@@ -792,6 +840,7 @@ export class App {
 
   teardown() {
     if (this.onShortcut) document.removeEventListener('keydown', this.onShortcut);
+    if (this.onHelpShortcut) document.removeEventListener('keydown', this.onHelpShortcut);
     for (const instance of this.instances.values()) {
       instance.onHide?.();
       instance.destroy?.();
@@ -1036,14 +1085,6 @@ export class App {
       body: [
         h('p', {}, 'Clover is a workspace for visualising mathematics. It runs entirely in your browser.'),
         section(
-          'Tools',
-          h(
-            'ul',
-            {},
-            this.toolList.map((tool) => h('li', {}, h('strong', {}, tool.name), ` \u2013 ${tool.description}`)),
-          ),
-        ),
-        section(
           'Tabs',
           h(
             'ul',
@@ -1064,11 +1105,24 @@ export class App {
         section(
           'Keyboard',
           h(
-            'ul',
-            {},
-            h('li', {}, 'On the home screen, press / to search the tools and Enter to open the first match.'),
-            h('li', {}, 'Tab strip: F2 renames, Delete closes, Home and End jump to the first and last tab.'),
-            h('li', {}, 'Menus and dialogs close with Escape.'),
+            'dl',
+            { class: 'help-keys' },
+            ...[
+              [['/'], 'On the home screen, search the tools. Enter opens the first match.'],
+              [['?'], 'Open this help.'],
+              [['Left', 'Right'], 'With a tab focused: switch to the previous or next tab.'],
+              [['Home', 'End'], 'With a tab focused: jump to the first or last tab.'],
+              [['F2'], 'With a tab focused: rename it.'],
+              [['Delete'], 'With a tab focused: close it. Closing can be undone.'],
+              [['Esc'], 'Close a menu or dialog.'],
+            ].flatMap(([keys, text]) => [
+              h(
+                'dt',
+                {},
+                keys.flatMap((key, index) => (index === 0 ? [h('kbd', {}, key)] : [' ', h('kbd', {}, key)])),
+              ),
+              h('dd', {}, text),
+            ]),
           ),
         ),
         section(
@@ -1104,6 +1158,14 @@ export class App {
               {},
               'Expressions use + - * / ^ and functions such as sin(x), exp(x), sqrt(x). Implicit products like 2x are allowed.',
             ),
+          ),
+        ),
+        section(
+          'Tools',
+          h(
+            'ul',
+            {},
+            this.toolList.map((tool) => h('li', {}, h('strong', {}, tool.name), ` \u2013 ${tool.description}`)),
           ),
         ),
       ],

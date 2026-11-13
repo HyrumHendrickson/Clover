@@ -975,6 +975,15 @@ export default {
       for (const instance of instances.values()) instance.destroy();
       instances = new Map();
       container.replaceChildren();
+      if (state.cells.length === 0) {
+        container.append(
+          h(
+            'p',
+            { class: 'nb-empty' },
+            'This notebook is empty. Use Add above to start with text, math, a graph, or Python. Cells share definitions, so a function defined in a math cell can be graphed in a graph cell.',
+          ),
+        );
+      }
       state.cells.forEach((cell, index) => {
         const instance = buildCell(cell, index);
         instances.set(cell.id, instance);

@@ -277,7 +277,7 @@ export default {
     const reset = h(
       'button',
       {
-        class: 'btn btn-quiet',
+        class: 'btn',
         type: 'button',
         title: 'Replace this program with the example',
         onclick: () => editor.setValue(STARTERS[state.language]),

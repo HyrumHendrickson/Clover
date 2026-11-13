@@ -1,4 +1,5 @@
 import { h } from './dom.js';
+import { icon } from './icons.js';
 
 /**
  * Show a modal dialog and resolve with the chosen action value, or null if dismissed.
@@ -11,7 +12,22 @@ export function showDialog({ title, body, actions, wide = false }) {
     const dialog = h(
       'dialog',
       { class: `dialog${wide ? ' dialog-wide' : ''}`, 'aria-labelledby': titleId },
-      h('h2', { class: 'dialog-title', id: titleId }, title),
+      h(
+        'div',
+        { class: 'dialog-head' },
+        h('h2', { class: 'dialog-title', id: titleId }, title),
+        h(
+          'button',
+          {
+            type: 'button',
+            class: 'btn btn-quiet btn-icon dialog-close',
+            'aria-label': 'Close',
+            title: 'Close',
+            onclick: () => dialog.close(),
+          },
+          icon('close', 16),
+        ),
+      ),
       h('div', { class: 'dialog-body' }, body),
       h(
         'div',
@@ -21,6 +37,7 @@ export function showDialog({ title, body, actions, wide = false }) {
             'button',
             {
               type: 'button',
+              autofocus: action.kind === 'primary' || action.kind === 'danger',
               class: `btn ${action.kind === 'primary' ? 'btn-primary' : action.kind === 'danger' ? 'btn-danger' : 'btn-quiet'}`,
               onclick: () => {
                 result = action.value;

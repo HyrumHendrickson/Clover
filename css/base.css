@@ -83,6 +83,8 @@ body {
 body {
   margin: 0;
   display: grid;
+  /* An explicit column keeps wide content (the tab strip, tables) from stretching the page past the screen. */
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: auto minmax(0, 1fr);
   background: var(--bg);
   color: var(--text);
@@ -186,7 +188,7 @@ p {
 .btn-danger {
   background: var(--danger);
   border-color: var(--danger);
-  color: var(--bg);
+  color: var(--accent-contrast);
 }
 
 .btn-quiet,
@@ -210,6 +212,36 @@ p {
   min-height: 26px;
   padding: 0 8px;
   font-size: 12px;
+}
+
+/* A button that opens a menu shows a small chevron, so it reads differently from one that acts at once. */
+.btn[aria-haspopup='menu']:not(.btn-icon)::after {
+  content: '';
+  flex: none;
+  width: 6px;
+  height: 6px;
+  margin: -3px 0 0 2px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  opacity: 0.65;
+  transform: rotate(45deg);
+}
+
+.btn[aria-expanded='true'] {
+  background: var(--surface-3);
+}
+
+kbd {
+  display: inline-block;
+  min-width: 20px;
+  padding: 1px 6px;
+  border: 1px solid var(--border-strong);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  background: var(--surface-2);
+  color: var(--text);
+  font: 12px/1.4 var(--font-mono);
+  text-align: center;
 }
 
 .btn-group {
@@ -474,6 +506,30 @@ p {
   font-weight: 600;
 }
 
+.toast-close {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 24px;
+  height: 24px;
+  margin: -2px -6px -2px -6px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: inherit;
+  opacity: 0.7;
+}
+
+.toast-close:hover {
+  background: rgb(127 127 127 / 28%);
+  opacity: 1;
+}
+
+.toast-close:focus-visible {
+  outline-color: currentColor;
+}
+
 @keyframes toast-in {
   from {
     opacity: 0;
@@ -507,10 +563,21 @@ p {
   flex-direction: column;
 }
 
+.dialog-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 18px 16px 8px 24px;
+}
+
 .dialog-title {
-  margin: 0;
-  padding: 22px 24px 8px;
+  margin: 4px 0 0;
   font: 600 22px/1.25 var(--font-display);
+}
+
+.dialog-close {
+  flex: none;
 }
 
 .dialog-body {
@@ -540,8 +607,24 @@ p {
 }
 
 .help-section h3 {
-  margin: 18px 0 6px;
-  font-size: 14px;
+  margin: 20px 0 6px;
+  font-size: 15px;
+}
+
+.help-keys {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 6px 16px;
+  margin: 0;
+  align-items: baseline;
+}
+
+.help-keys dt {
+  white-space: nowrap;
+}
+
+.help-keys dd {
+  margin: 0;
 }
 
 @media (prefers-reduced-motion: reduce) {

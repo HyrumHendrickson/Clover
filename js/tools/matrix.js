@@ -893,7 +893,7 @@ export default {
         h(
           'button',
           {
-            class: 'btn btn-quiet',
+            class: 'btn',
             type: 'button',
             'aria-haspopup': 'menu',
             onclick: (event) =>

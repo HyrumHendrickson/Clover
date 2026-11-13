@@ -20,9 +20,18 @@ All notable changes are documented here. The format follows [Keep a Changelog](h
 - 3D graphing: hover a surface to see the coordinates of the point under the pointer.
 - Graphing: expression rows are numbered.
 - Clicking the Clover logo returns to the home screen without closing tabs.
+- Press ? to open Help. Help lists keyboard shortcuts as a table, and dialogs and messages have a close button.
+- The tab strip scrolls with the mouse wheel and fades at an edge where tabs are cut off.
+- Notebook: an empty notebook explains how to add the first cell.
 
 ### Changed
 
+- Mobile: pages no longer scroll sideways, so the theme and Help buttons stay on screen, and tools that stack their panels (Linear algebra, Cellular automata, Python turtle, Programming, LaTeX) no longer overlap them.
+- Home screen: one tool per short row on phones, section headings in sentence case with a tool count, and no duplicate logo.
+- Buttons that open a menu show a chevron. Import, Export, and Help have tooltips.
+- Statistics, Finance, and Probability inputs fill their cells instead of staying 58 pixels wide.
+- Graphing: the Add buttons wrap instead of hiding behind a scroll, and the expression list is up to 400 pixels wide.
+- Small section labels are in sentence case, as the rest of the interface is.
 - The Notebook picture on the home screen shows a written cell, a math cell, and a graph cell that share a definition, and draws correctly in both themes.
 - The README now lists the Geometry tool, uses the name Linear algebra, and describes the home screen; the package and page descriptions cover every tool.
 - Graphing (2D and 3D) is restyled after Desmos: a white canvas with grey gridlines, a grey gutter beside the numbered expression rows, a coloured bar on the row being edited, an add bar that stays at the top of the list, and a vertical stack of view buttons (settings, zoom, reset, save) over the graph. The 3D preset menu moved to the lower left of the graph.

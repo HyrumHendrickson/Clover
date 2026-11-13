@@ -1,4 +1,5 @@
 import { h } from './dom.js';
+import { icon } from './icons.js';
 
 let region = null;
 
@@ -38,6 +39,11 @@ export function toast(message, { kind = 'info', actionLabel, onAction, duration 
           actionLabel,
         )
       : null,
+    h(
+      'button',
+      { class: 'toast-close', type: 'button', 'aria-label': 'Dismiss message', title: 'Dismiss', onclick: dismiss },
+      icon('close', 12),
+    ),
   );
   host.append(item);
   while (host.children.length > 4) host.firstElementChild.remove();
