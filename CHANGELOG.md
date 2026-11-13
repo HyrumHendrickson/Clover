@@ -6,7 +6,7 @@ All notable changes are documented here. The format follows [Keep a Changelog](h
 
 ### Added
 
-- Home screen: tools are grouped into sections and a search box filters them by name, description, or related words (press / to focus it, Enter to open the first match, Escape to clear it). The Help dialog lists the keyboard shortcuts.
+- Home screen: tools are grouped into sections. The Help dialog lists the keyboard shortcuts.
 - A Probability tab: exact permutations and combinations (with or without repeats, up to 1000), two events (union, conditional probabilities, independence), Bayes' theorem with natural frequencies, binomial probabilities with a shaded chart, and the expected value, variance, and standard deviation of a random variable. See docs/calculators.md.
 - A Finance tab: compound interest with regular contributions and inflation, the contribution needed to reach a savings goal, loan payments with extra payments and a year-by-year schedule, present and future value solved for any unknown, and NPV, IRR, and payback with an NPV profile chart. See docs/calculators.md.
 - Statistics: data goes into a spreadsheet-style grid with named columns, row numbers, and arrow-key movement, and the sheet grows as you type. **Upload CSV** loads a file (comma, tab, or semicolon separated; a text-only first row is used as the column names), **Download** saves the data as CSV, and **Edit as text** shows and edits the same data as CSV text. Pasting cells from a spreadsheet or CSV text fills the grid from the cell you paste into. Up to 8 columns and 500 rows.

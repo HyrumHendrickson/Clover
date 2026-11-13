@@ -2,7 +2,7 @@
 
 A browser workspace for visualising mathematics. Open as many tabs as you like, including several of the same tool, and share your work as a single file.
 
-- Sixteen tools in one place, grouped on the home screen and searchable: press `/` and type a word such as "derivative" or "loan".
+- Sixteen tools in one place, grouped by purpose on the home screen.
 - Light and dark themes, keyboard access throughout, and no account or install.
 - Work is saved on your device. Export a tab or the whole workspace as a `.clover` file.
 
