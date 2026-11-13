@@ -19,7 +19,7 @@ Open Clover, choose **Export, Embed on a website**, pick the whole workspace or 
 ></iframe>
 ```
 
-Tool types: `graph`, `graph3d`, `notebook`, `matrix` (Linear algebra), `geometry`, `stats`, `complex`, `fractals`, `vector`, `automata`, `latex`, `maxima`, `python`, `programming`.
+Tool types: `graph`, `graph3d`, `notebook`, `matrix` (Linear algebra), `geometry`, `stats`, `complex`, `fractals`, `vector`, `automata`, `latex`, `maxima`, `python`, `programming`, `probability`, `finance`.
 
 ## Address options
 

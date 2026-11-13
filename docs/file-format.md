@@ -31,21 +31,23 @@ Files use the `.clover` extension and are UTF-8 JSON. Importers accept `.clover`
 
 ## Tool state
 
-| `type`     | State                                                                                     |
-| ---------- | ----------------------------------------------------------------------------------------- |
-| `graph`    | `rows`, `view`, `grid`, `minor`, `numbers`, `angle`                                       |
-| `matrix`   | `lines`: matrices (`name`, `cells`) and calculations (`text`). Shown as "Linear algebra". |
-| `complex`  | `expr`, `mode`, `quality`, `grid`, `view`                                                 |
-| `vector`   | `p`, `q`, `arrows`, `heat`, `flow`, `grid`, `density`, `seeds`, `view`                    |
-| `python`   | `code`                                                                                    |
-| `graph3d`  | `rows`, `camera`, `bounds`, `grid`, `numbers`, `wire`, `angle`                            |
-| `notebook` | `cells` (`text`, `math`, `graph`, `embed`, `code`, or `pycanvas`), `angle`                |
-| `geometry` | `rows` (`id`, `text`), `snap`, `view`                                                     |
-| `stats`    | `cols`, `mode`, `describe`, `regress`, `dist`, `tests`                                    |
-| `fractals` | `kind`, `view`, `iterations`, `palette`, `power`, `cRe`, `cIm`                            |
-| `automata` | `code` (a Python rule), `width`, `height`, `cells` (one hex digit per cell), `speed`      |
-| `latex`    | `files` (`path` with `text`, or `data` as base64), `main`, `active`, `engine`, `auto`     |
-| `maxima`   | `inputs`: the commands of the session, replayed when the tab opens                        |
+| `type`        | State                                                                                     |
+| ------------- | ----------------------------------------------------------------------------------------- |
+| `graph`       | `rows`, `view`, `grid`, `minor`, `numbers`, `angle`                                       |
+| `matrix`      | `lines`: matrices (`name`, `cells`) and calculations (`text`). Shown as "Linear algebra". |
+| `complex`     | `expr`, `mode`, `quality`, `grid`, `view`                                                 |
+| `vector`      | `p`, `q`, `arrows`, `heat`, `flow`, `grid`, `density`, `seeds`, `view`                    |
+| `python`      | `code`                                                                                    |
+| `graph3d`     | `rows`, `camera`, `bounds`, `grid`, `numbers`, `wire`, `angle`                            |
+| `notebook`    | `cells` (`text`, `math`, `graph`, `embed`, `code`, or `pycanvas`), `angle`                |
+| `geometry`    | `rows` (`id`, `text`), `snap`, `view`                                                     |
+| `stats`       | `cols`, `mode`, `describe`, `regress`, `dist`, `tests`                                    |
+| `fractals`    | `kind`, `view`, `iterations`, `palette`, `power`, `cRe`, `cIm`                            |
+| `automata`    | `code` (a Python rule), `width`, `height`, `cells` (one hex digit per cell), `speed`      |
+| `latex`       | `files` (`path` with `text`, or `data` as base64), `main`, `active`, `engine`, `auto`     |
+| `maxima`      | `inputs`: the commands of the session, replayed when the tab opens                        |
+| `probability` | `mode`, `counting`, `events`, `bayes`, `trials`, `variable`                               |
+| `finance`     | `mode`, `compound`, `goal`, `loan`, `tvm`, `flows`                                        |
 
 `view` is `{ cx, cy, radius }`: the centre and half the shorter canvas side in world units. The `graph` tool uses `{ cx, cy, xspan, yspan }` instead, because its axes scale independently: the units across the width and height, with a `yspan` of 0 meaning "square".
 
@@ -90,6 +92,7 @@ Each row is `{ id, text }`, one line of the geometry language: a comment (`#`), 
 | 4       | Graph rows gain `folder` and `style`, and `folder` and `table` rows are added. The `stats` tool is added. Older files open unchanged.      |
 | 5       | The `fractals`, `automata`, `latex`, and `maxima` tools are added. Notebooks gain `code` and `pycanvas` cells. Older files open unchanged. |
 | 6       | The `programming` tool is added. Older files open unchanged.                                                                               |
+| 7       | The `probability` and `finance` tools are added. Older files open unchanged.                                                               |
 
 Notebook `code` and `pycanvas` cells are `{ id, type, code }`. Their output is never saved. Python code in an imported file runs only when a person presses Run, Play, Step, or Compile.
 

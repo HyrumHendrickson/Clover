@@ -32,6 +32,9 @@ const STROKE = {
   'tool-complex': 'M12 3a9 9 0 100 18 9 9 0 000-18zM12 8a4 4 0 100 8 4 4 0 000-8zM12 12h.01',
   'tool-vector': 'M4 7h7M8.5 4.5L11 7 8.5 9.5M4 17h7M8.5 14.5L11 17l-2.5 2.5M14 12h6M17.5 9.5L20 12l-2.5 2.5',
   'tool-stats': 'M4 20h16M4 20V4M7.5 20v-6M12 20V8M16.5 20v-9',
+  'tool-probability': 'M5 5h14v14H5zM9 9h.01M15 9h.01M12 12h.01M9 15h.01M15 15h.01',
+  'tool-finance':
+    'M12 3a9 9 0 100 18 9 9 0 000-18zM14.5 9.2c-.6-.8-1.5-1.2-2.5-1.2-1.4 0-2.5.8-2.5 2s1 1.7 2.5 2 2.5.8 2.5 2-1.1 2-2.5 2c-1 0-1.9-.4-2.5-1.2M12 6.5V8M12 16v1.5',
   'tool-automata': 'M4 4h5v5H4zM15 4h5v5h-5zM9.5 9.5h5v5h-5zM4 15h5v5H4zM15 15h5v5h-5z',
   'tool-fractal': 'M12 3l4 7H8l4-7zM8 10l-4 7h8l-4-7zM16 10l-4 7h8l-4-7zM4 17v3h16v-3',
   'tool-latex': 'M6 3h9l4 4v14H6zM15 3v4h4M9 12h7M9 15h7M9 18h4',

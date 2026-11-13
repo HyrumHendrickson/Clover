@@ -27,7 +27,7 @@ test('first run shows the launcher with one card per tool', () => {
   assert.equal(app.tabs.length, 0);
   assert.equal(elements.launcher.hidden, false);
   assert.equal(elements.launcher.querySelectorAll('.launch-card').length, TOOL_LIST.length);
-  assert.equal(TOOL_LIST.length, 14);
+  assert.equal(TOOL_LIST.length, 16);
 });
 
 test('every tool opens without errors, including two of the same kind', async () => {

@@ -7,7 +7,7 @@ index.html ── js/main.js ── core/app.js (App)
                               ├─ core/workspace.js   pure model, import/export validation
                               ├─ core/store.js       localStorage
                               ├─ core/menu|dialog|toast.js, mathfield.js, exprlist.js
-                              └─ tools/index.js ── graph | graph3d | notebook | matrix | stats | complex | vectorfield | python
+                              └─ tools/index.js ── graph | graph3d | notebook | matrix | stats | probability | finance | complex | vectorfield | python
                                                     └─ lib/ expr, complexmath, viewport, domain, field, ...
 python tool ── postMessage ── runner/index.html (sandboxed iframe) ── vendor/skulpt
 ```
@@ -15,6 +15,10 @@ python tool ── postMessage ── runner/index.html (sandboxed iframe) ─�
 ## Tabs and tools
 
 `App` owns the tab list. Each tool is an object with `normalize`, `mount`, and optional `preview`. `mount(root, ctx)` receives a state object that the tool mutates in place, then calls `ctx.save()`; the app debounces persistence. Tool instances are created on first activation and kept alive while hidden, with `onShow` and `onHide` for pausing work.
+
+## Probability and Finance
+
+`lib/probability.js` and `lib/finance.js` are pure and checked against textbook values in `tests/probability.test.js` and `tests/finance.test.js`. Counts use BigInt, so they stay exact. `core/calcui.js` holds what the two tabs share: labelled inputs, result tiles and tables, and a chart pane that paints a `statchart` spec and repaints on resize and theme change. Both tabs reuse the Statistics tab's `st-` styles; `css/calc.css` adds only what those lack. See [calculators.md](calculators.md).
 
 ## Expressions
 

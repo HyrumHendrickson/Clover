@@ -1,5 +1,6 @@
 import automata from './automata.js';
 import complex from './complex.js';
+import finance from './finance.js';
 import fractals from './fractals.js';
 import geometry from './geometry.js';
 import graph from './graph.js';
@@ -8,6 +9,7 @@ import latex from './latex.js';
 import matrix from './matrix.js';
 import maxima from './maxima.js';
 import notebook from './notebook.js';
+import probability from './probability.js';
 import programming from './programming.js';
 import python from './python.js';
 import { registerTools } from './registry.js';
@@ -22,6 +24,8 @@ export const TOOL_LIST = [
   matrix,
   geometry,
   stats,
+  probability,
+  finance,
   complex,
   fractals,
   vectorfield,

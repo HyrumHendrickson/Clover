@@ -6,6 +6,8 @@ All notable changes are documented here. The format follows [Keep a Changelog](h
 
 ### Added
 
+- A Probability tab: exact permutations and combinations (with or without repeats, up to 1000), two events (union, conditional probabilities, independence), Bayes' theorem with natural frequencies, binomial probabilities with a shaded chart, and the expected value, variance, and standard deviation of a random variable. See docs/calculators.md.
+- A Finance tab: compound interest with regular contributions and inflation, the contribution needed to reach a savings goal, loan payments with extra payments and a year-by-year schedule, present and future value solved for any unknown, and NPV, IRR, and payback with an NPV profile chart. See docs/calculators.md.
 - Statistics: data goes into a spreadsheet-style grid with named columns, row numbers, and arrow-key movement, and the sheet grows as you type. **Upload CSV** loads a file (comma, tab, or semicolon separated; a text-only first row is used as the column names), **Download** saves the data as CSV, and **Edit as text** shows and edits the same data as CSV text. Pasting cells from a spreadsheet or CSV text fills the grid from the cell you paste into. Up to 8 columns and 500 rows.
 - Graphing (2D and 3D): a button to hide and show the expression list.
 - Symbolic algebra: a command reference beside the session (select an entry to put its example in the input), starting points when the session is empty, and a Run button.
@@ -26,7 +28,7 @@ All notable changes are documented here. The format follows [Keep a Changelog](h
 - Symbolic algebra: each command is a card with its result in large type, the input is pinned under the session and grows with what you type, and the page uses the full height.
 - Linear algebra: the page is restyled, and the picture of `A*x` shows only the two vectors until "Show grid and details" is ticked.
 - Statistics: the mode tabs and options moved above the results.
-- The file format is version 6 (adds the `programming` tool). Older files open unchanged.
+- The file format is version 7 (adds the `probability` and `finance` tools). Older files open unchanged.
 - Notebook and Geometry tabs open empty instead of with example content.
 - The two-stars orbit example now animates while it runs.
 
